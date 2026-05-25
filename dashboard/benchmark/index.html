@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>gcc-sh-monitor — dejagnu trends</title>
+  <link rel="stylesheet" href="../style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="data.js"></script>
+</head>
+<body>
+  <header>
+    <h1><a href="../">gcc-sh-monitor</a> · dejagnu trends</h1>
+    <p>One chart per metric, one point per upstream commit tested.</p>
+  </header>
+
+  <main id="charts"></main>
+
+  <footer>
+    <p>
+      Raw data: <a href="benchmark-data.json">benchmark-data.json</a> ·
+      <a href="https://github.com/mountain-reverie/gcc-sh-monitor">source</a>
+    </p>
+  </footer>
+
+  <script>
+    const data = window.BENCHMARK_DATA || { entries: {} };
+    const main = document.getElementById("charts");
+
+    // Collect (timestamp, value) series per metric name across all entries.
+    const byMetric = {};
+    for (const suite of Object.values(data.entries || {})) {
+      for (const run of suite) {
+        for (const b of run.benches) {
+          if (!byMetric[b.name]) byMetric[b.name] = [];
+          byMetric[b.name].push({
+            x: run.date,
+            y: b.value,
+            commit: run.commit.id.slice(0, 7),
+            url: run.commit.url,
+            unit: b.unit,
+          });
+        }
+      }
+    }
+
+    if (Object.keys(byMetric).length === 0) {
+      main.innerHTML = "<p>No data yet — waiting for the first ci-full run.</p>";
+    }
+
+    for (const [name, points] of Object.entries(byMetric)) {
+      points.sort((a, b) => a.x - b.x);
+      const section = document.createElement("section");
+      const h2 = document.createElement("h2");
+      h2.textContent = name;
+      section.appendChild(h2);
+      const canvas = document.createElement("canvas");
+      canvas.height = 80;
+      section.appendChild(canvas);
+      main.appendChild(section);
+
+      new Chart(canvas, {
+        type: "line",
+        data: {
+          datasets: [{
+            label: name,
+            data: points,
+            borderColor: "#0066cc",
+            backgroundColor: "#0066cc22",
+            tension: 0.1,
+            pointRadius: 4,
+          }],
+        },
+        options: {
+          parsing: false,
+          scales: {
+            x: { type: "time", time: { unit: "day" } },
+            y: { beginAtZero: true, title: { display: true, text: points[0].unit } },
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                title: (items) => {
+                  const d = new Date(items[0].raw.x);
+                  return d.toISOString().slice(0, 19) + "Z";
+                },
+                label: (item) => `${item.raw.y} ${item.raw.unit} (${item.raw.commit})`,
+              },
+            },
+            legend: { display: false },
+          },
+        },
+      });
+    }
+  </script>
+</body>
+</html>
