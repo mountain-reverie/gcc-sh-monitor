@@ -1,0 +1,33 @@
+# Base image for gcc-sh-monitor CI runs.
+# Pinned to Debian trixie. Tagged YYYY-MM by the rebuild workflow.
+
+FROM debian:trixie-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc g++ \
+        make ninja-build cmake \
+        bison flex texinfo gawk \
+        libtool autoconf automake \
+        dejagnu expect tcl \
+        python3 python3-pip \
+        jq curl git ca-certificates \
+        ccache xz-utils \
+        gcc-sh4-linux-gnu \
+        g++-sh4-linux-gnu \
+        binutils-sh4-linux-gnu \
+        libc6-dev-sh4-cross \
+        qemu-user-static \
+        binfmt-support \
+    && rm -rf /var/lib/apt/lists/*
+
+# Sanity: cross gcc and qemu must be on PATH.
+RUN sh4-linux-gnu-gcc --version && qemu-sh4-static --version
+
+# Where vendored test suites will live in later increments.
+RUN mkdir -p /opt/test-suites
+
+WORKDIR /work
+CMD ["/bin/bash"]
