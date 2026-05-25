@@ -1,0 +1,18 @@
+# Build outputs
+/build/
+/dist/
+*.o
+*.a
+
+# ccache
+.ccache/
+
+# Editor / OS
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# Plan / spec artefacts kept local-only
+/docs/superpowers/
