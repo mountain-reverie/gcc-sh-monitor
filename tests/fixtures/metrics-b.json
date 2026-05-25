@@ -1,0 +1,4 @@
+[
+  {"name": "beta",  "unit": "bytes", "value": 100},
+  {"name": "gamma", "unit": "bytes", "value": 200}
+]
