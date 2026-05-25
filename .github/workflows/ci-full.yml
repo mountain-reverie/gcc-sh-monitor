@@ -96,14 +96,16 @@ jobs:
           mkdir -p html/benchmark
           cp -r dashboard/* html/
           # If a prior dashboard is already published, fetch its benchmark
-          # data so the new run appends rather than replaces.
+          # data so the new run appends rather than replaces. Otherwise
+          # leave the file absent — benchmark-action creates it fresh in
+          # its own structured format (a wrong-format seed makes the action
+          # silently skip the write).
           if curl --silent --fail \
               "https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/benchmark-data.json" \
               -o html/benchmark/benchmark-data.json 2>/dev/null; then
             echo "Seeded with existing benchmark-data.json"
           else
-            echo '[]' > html/benchmark/benchmark-data.json
-            echo "No prior data; starting fresh"
+            echo "No prior data; benchmark-action will create the file"
           fi
 
       - name: Store benchmark result
@@ -120,8 +122,8 @@ jobs:
 
       - name: Generate data.js for the chart UI
         run: |
-          echo "window.BENCHMARK_DATA = $(cat html/benchmark/benchmark-data.json)" \
-            > html/benchmark/data.js
+          data=$(cat html/benchmark/benchmark-data.json 2>/dev/null || echo '{}')
+          echo "window.BENCHMARK_DATA = $data" > html/benchmark/data.js
 
       - name: Generate status badge
         run: |
