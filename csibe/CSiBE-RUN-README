@@ -1,0 +1,41 @@
+Code-Size Benchmark Environment (CSiBE)
+---------------------------------------
+
+Authors:
+        Arpad Beszedes <beszedes@inf.u-szeged.hu>,
+        Rudolf Ferenc <ferenc@inf.u-szeged.hu>,
+        Tamas Gergely <gertom@inf.u-szeged.hu>,
+        Tibor Gyimothy <gyimi@inf.u-szeged.hu>,
+        Ferenc Havasi <havasi@inf.u-szeged.hu>,
+        Akos Kiss <akoskiss@inf.u-szeged.hu>,
+        Gabor Loki <loki@inf.u-szeged.hu>,
+        Laszlo Vidacs <lac@inf.u-szeged.hu>.
+        University of Szeged, Software Engineering Department, 2003-2004.
+
+Licenses:
+        This software  (except some sources in the `src' directory;  see file
+        CSiBE-README in the `src' directory) is free; you can redistribute it
+        and/or modify it under the terms of the GNU General Public License as
+        published  by  the Free Software Foundation;  either version 2 of the
+        License, or (at your option) any later version.
+
+Usage:
+        This is an extension to the CSiBE environment for measuring execution
+        time. To measure execution time simply decompress the  files into the
+        CSiBE base directory  and  create  a  new configuration (for this see
+        `CSiBE-README').  After this `cd'  to the newly created configuration
+        directory   and   type  `make result-runtime.csv'.  If  the parameter
+        `runtime' is given to the switch `-R' (either alone or in addition to
+        `size'  and/or  `time')   when  the  new  configuration  is  created,
+        `make result' will automatically create the `result-runtime.csv' file
+        as well.
+        Note, that the linking of some programs requires additional libraries
+        (e.g. libz).  Without these libraries, no runtime can be measured for
+        those programs.
+
+Contact:
+         Send comments, suggestions and inquiries to:
+           csibe-feedback@sed.inf.u-szeged.hu
+
+         Also see the CSiBE website at:
+           http://www.csibe.org
