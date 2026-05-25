@@ -1,0 +1,134 @@
+{
+  "20080410-1.c": {
+    "source": "gcc/testsuite/gcc.target/sh/20080410-1.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "Verify reload chain conflicts do not emit redundant 'add r0,r0'",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr21255-1.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr21255-1.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR21255: FPU argument register move sequence at -O2 -fomit-frame-pointer",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr49263-2.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr49263-2.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR49263: TST #imm,R0 for QI/HI values against negative constants",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr49263-3.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr49263-3.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR49263: TST #imm,R0 when tested reg is shifted by a constant",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr50751-8.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr50751-8.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR50751: SH2A 4-byte movu.b/movu.w displacement insns",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr51244-10.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr51244-10.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR51244: compare-branch inversion side-effects on bit-test improvement",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr51244-18.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr51244-18.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR51244: no unnecessary T-bit stores before conditional branches (CSiBE case)",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr51244-19.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr51244-19.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR51244: no unnecessary T-bit stores before conditional branches (second CSiBE case)",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr52483-3.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr52483-3.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR52483: volatile mem loads/stores use indexed addressing without redundant extensions",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr52483-4.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr52483-4.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR52483: volatile floating-point mem loads/stores use indexed addressing",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr53513-1.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr53513-1.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR53513: fpchg used to switch FPSCR.PR mode on SH4A",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr54089-2.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr54089-2.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR54089: dynamic logical right shift loads negated constant directly",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr54236-6.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr54236-6.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR54236: missed subc case (tst #1,r0; movt r0; neg r0,r0)",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr54602-3.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr54602-3.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR54602: rte delay slot must not stuff register pop touching banked r0-r7",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr55212-c248.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr55212-c248.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR55212 comment 248: canonical LRA regression with heavy r7-r13 register pressure",
+    "expected": "compiles_and_runs",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr61142.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr61142.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR61142: @(r0,rm),rn indexed loads target r0",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr61195.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr61195.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR61195: no FPSCR mode switch for single-precision moves",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr63260.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr63260.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR63260: no FPSCR precision mode change for fneg/fabs",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr64366.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr64366.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR64366: LRA-mode (-mlra) build of QI/HI mode-attributed code",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr64793.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr64793.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR64793: rts delay slot is filled when following a cbranch with unfilled delay slot",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr6526.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr6526.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR6526: XF registers preserved across integer division done via double-precision FPU",
+    "expected": "compiles_and_runs",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr67675.c": {
+    "source": "gcc/testsuite/gcc.target/sh/pr67675.c @ 29e4b7f1100ad3dd611da6fc3314a41978c5fc25",
+    "description": "PR67675: runtime alignment tests only generated for inputs of unknown alignment",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O1", "O2", "Os"]
+  }
+}
