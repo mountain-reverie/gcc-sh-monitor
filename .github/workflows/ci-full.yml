@@ -1,8 +1,8 @@
 name: ci-full
 
 on:
-  # Triggered by the sync workflow's push of state/last-tested.json (which
-  # is authored via a PAT so the push event fires) and by manual edits.
+  # Triggered by the sync workflow's push of state/last-tested.json (the
+  # sync uses DEPENDABOT_RECREATE_PAT so push events fire) and by manual edits.
   push:
     branches: [main]
     paths:
@@ -10,17 +10,22 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: ci-full
   cancel-in-progress: false
 
 jobs:
-  smoke:
+  build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     container:
       image: ghcr.io/mountain-reverie/gcc-sh-base:latest
+    outputs:
+      commit: ${{ steps.meta.outputs.commit }}
     steps:
       - uses: actions/checkout@v5
 
@@ -28,8 +33,113 @@ jobs:
         id: meta
         run: echo "commit=$(jq -r .commit state/last-tested.json)" >> "$GITHUB_OUTPUT"
 
-      - name: Print environment
+      - name: Restore ccache
+        uses: actions/cache@v5
+        with:
+          path: /tmp/.ccache
+          key: ccache-sh4-${{ steps.meta.outputs.commit }}
+          restore-keys: |
+            ccache-sh4-
+
+      - name: Restore GCC source clone
+        uses: actions/cache@v5
+        with:
+          path: /tmp/gcc-src
+          key: gcc-src-${{ steps.meta.outputs.commit }}
+          restore-keys: |
+            gcc-src-
+
+      - name: Build cross GCC
+        run: scripts/build-gcc.sh "${{ steps.meta.outputs.commit }}"
+
+      - name: Run dejagnu sh.exp
+        run: scripts/run-dejagnu.sh
+
+      - name: Parse results into benchmark-action JSON
         run: |
-          echo "Upstream commit under test: ${{ steps.meta.outputs.commit }}"
-          sh4-linux-gnu-gcc --version
-          qemu-sh4-static --version | head -1
+          mkdir -p metrics
+          python3 scripts/parse-dejagnu.py /tmp/dejagnu-out/gcc.sum > metrics/dejagnu.json
+          cat metrics/dejagnu.json
+
+      - name: Upload raw dejagnu artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dejagnu-${{ steps.meta.outputs.commit }}
+          path: |
+            /tmp/dejagnu-out/gcc.sum
+            /tmp/dejagnu-out/gcc.log.gz
+          retention-days: 30
+
+      - name: Stash metrics for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics
+          path: metrics/dejagnu.json
+          retention-days: 1
+
+  publish:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.DEPENDABOT_RECREATE_PAT }}
+
+      - name: Fetch metrics
+        uses: actions/download-artifact@v4
+        with:
+          name: metrics
+          path: metrics
+
+      - name: Prepare html dir + seed benchmark data
+        run: |
+          mkdir -p html/benchmark
+          cp -r dashboard/* html/
+          # If a prior dashboard is already published, fetch its benchmark
+          # data so the new run appends rather than replaces.
+          if curl --silent --fail \
+              "https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/benchmark-data.json" \
+              -o html/benchmark/benchmark-data.json 2>/dev/null; then
+            echo "Seeded with existing benchmark-data.json"
+          else
+            echo '[]' > html/benchmark/benchmark-data.json
+            echo "No prior data; starting fresh"
+          fi
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: customSmallerIsBetter
+          output-file-path: metrics/dejagnu.json
+          benchmark-data-dir-path: html/benchmark
+          external-data-json-path: html/benchmark/benchmark-data.json
+          github-token: ${{ secrets.DEPENDABOT_RECREATE_PAT }}
+          auto-push: false
+          fail-on-alert: false
+          comment-on-alert: false
+
+      - name: Generate data.js for the chart UI
+        run: |
+          echo "window.BENCHMARK_DATA = $(cat html/benchmark/benchmark-data.json)" \
+            > html/benchmark/data.js
+
+      - name: Generate status badge
+        run: |
+          FAIL=$(jq '[.[] | select(.name=="dejagnu_fail_count")][0].value' metrics/dejagnu.json)
+          COLOR="green"
+          [ "$FAIL" -gt 0 ] && COLOR="yellow"
+          [ "$FAIL" -gt 5 ] && COLOR="red"
+          mkdir -p html/badge
+          curl -fsSL "https://img.shields.io/badge/dejagnu-${FAIL}%20fail-${COLOR}" \
+            -o html/badge/dejagnu.svg
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: html
+
+      - name: Deploy to Pages
+        uses: actions/deploy-pages@v4
