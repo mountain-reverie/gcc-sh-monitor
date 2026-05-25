@@ -1,0 +1,36 @@
+name: ci-full
+
+on:
+  # Sync workflow dispatches us explicitly (see sync.yml). The push trigger
+  # below catches manual edits to state/last-tested.json by a human, which
+  # GITHUB_TOKEN-authored pushes do NOT trigger.
+  push:
+    branches: [main]
+    paths:
+      - 'state/last-tested.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-full
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/mountain-reverie/gcc-sh-base:latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read tested commit
+        id: meta
+        run: echo "commit=$(jq -r .commit state/last-tested.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Print environment
+        run: |
+          echo "Upstream commit under test: ${{ steps.meta.outputs.commit }}"
+          sh4-linux-gnu-gcc --version
+          qemu-sh4-static --version | head -1
