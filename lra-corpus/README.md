@@ -16,6 +16,9 @@ upstream commit `29e4b7f1100ad3dd611da6fc3314a41978c5fc25` and inherit
 its license (GPLv3+ with GCC runtime library exception). See
 `LICENSING.md`.
 
+Some cases (named `pr55212-bz-*.c`) originate from PR 55212's Bugzilla
+attachments at https://gcc.gnu.org/bugzilla/show_bug.cgi?id=55212.
+
 ## Adding cases
 
 1. Drop the `.c` file in this directory.

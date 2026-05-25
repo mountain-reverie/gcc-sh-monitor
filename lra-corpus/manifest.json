@@ -130,5 +130,59 @@
     "description": "PR67675: runtime alignment tests only generated for inputs of unknown alignment",
     "expected": "compiles_only",
     "opt_levels": ["O0", "O1", "O2", "Os"]
+  },
+  "pr55212-bz-33465.c": {
+    "source": "gcc.gnu.org bugzilla PR 55212 attachment 33465",
+    "description": "PR 55212 reduced reproducer (libgcc_divsc3.c)",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O2", "Os"]
+  },
+  "pr55212-bz-33489.c": {
+    "source": "gcc.gnu.org bugzilla PR 55212 attachment 33489",
+    "description": "PR 55212 reduced reproducer (er_lgamma.c)",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O2", "Os"]
+  },
+  "pr55212-bz-33524.c": {
+    "source": "gcc.gnu.org bugzilla PR 55212 attachment 33524",
+    "description": "PR 55212 reduced reproducer (spills.c)",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O2", "Os"]
+  },
+  "pr55212-bz-58834.c": {
+    "source": "gcc.gnu.org bugzilla PR 55212 attachment 58834",
+    "description": "PR 55212 reduced reproducer (rrr.c)",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O2", "Os"]
+  },
+  "pr55212-bz-58835.c": {
+    "source": "gcc.gnu.org bugzilla PR 55212 attachment 58835",
+    "description": "PR 55212 reduced reproducer (movhi-store.c)",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O2", "Os"]
+  },
+  "pr55212-bz-58859.c": {
+    "source": "gcc.gnu.org bugzilla PR 55212 attachment 58859",
+    "description": "PR 55212 reduced reproducer (snd_stream.c)",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O2", "Os"]
+  },
+  "pr55212-bz-58904.c": {
+    "source": "gcc.gnu.org bugzilla PR 55212 attachment 58904",
+    "description": "PR 55212 reduced reproducer (gompaff.c)",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O2", "Os"]
+  },
+  "pr55212-bz-59102.c": {
+    "source": "gcc.gnu.org bugzilla PR 55212 attachment 59102",
+    "description": "PR 55212 reduced reproducer (trial.c)",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O2", "Os"]
+  },
+  "pr55212-bz-59549.c": {
+    "source": "gcc.gnu.org bugzilla PR 55212 attachment 59549",
+    "description": "PR 55212 reduced reproducer (pr55212-419-reduced.c)",
+    "expected": "compiles_only",
+    "opt_levels": ["O0", "O2", "Os"]
   }
 }
