@@ -38,10 +38,17 @@ if [ ! -x "$SIZE" ]; then
   echo "run-csibe: missing $SIZE" >&2
   exit 1
 fi
-# -B/usr/bin/sh4-linux-gnu- makes our built GCC pick up the Debian
-# cross binutils (our build ships no assembler/linker).
-# -c so we produce .o files (no link step, no libc needed).
-CFLAGS_BASE="-B/usr/bin/sh4-linux-gnu- -c -w"
+# -B... uses Debian's cross binutils (our built GCC ships none).
+# -c produces .o files (no link, no libc needed).
+# -w suppresses warnings (we measure size, not test cleanliness).
+# -DHAVE_CONFIG_H enables config.h paths in projects shipping one (e.g. flex).
+# -Wno-error=* keeps GCC 14+ from refusing K&R-era code (e.g. compiler subproject).
+CFLAGS_BASE="-B/usr/bin/sh4-linux-gnu- -c -w \
+  -std=gnu11 \
+  -DHAVE_CONFIG_H \
+  -Wno-error=implicit-function-declaration \
+  -Wno-error=implicit-int \
+  -Wno-error=int-conversion"
 
 # Sum .text + .rodata + .data across all .o files in $1.
 size_of_objects() {
@@ -72,13 +79,31 @@ for project_dir in "$CSIBE_DIR"/*/; do
     workdir=$(mktemp -d)
     cp -r "$project_dir"/* "$workdir"/ 2>/dev/null || true
 
-    # Build a list of -I flags covering the workdir and every subdir that
-    # contains a .h header (some subprojects keep headers in include/ or
-    # nested module dirs).
-    include_flags="-I$workdir"
+    # Build the -I list: $workdir itself, every dir containing a .h, AND every
+    # ancestor of those dirs up to $workdir. Some projects do
+    # `#include <subdir/foo.h>` where the header sits in $workdir/<...>/subdir/;
+    # the include flag needs to point at the parent dir, not the dir itself.
+    declare -A include_set
+    include_set["$workdir"]=1
     while IFS= read -r -d '' hdr_dir; do
-      include_flags+=" -I$hdr_dir"
+      # Walk from hdr_dir up to workdir.
+      d="$hdr_dir"
+      while [ "$d" != "$workdir" ] && [ "$d" != "/" ]; do
+        include_set["$d"]=1
+        d=$(dirname "$d")
+      done
     done < <(find "$workdir" -name '*.h' -printf '%h\0' | sort -uz)
+
+    include_flags=""
+    for d in "${!include_set[@]}"; do
+      include_flags+=" -I$d"
+    done
+    unset include_set
+
+    # Special-case: libpng needs zlib headers from a sibling subproject.
+    if [ "$project" = "libpng-1.2.5" ] && [ -d "$CSIBE_DIR/zlib-1.1.4" ]; then
+      include_flags+=" -I$CSIBE_DIR/zlib-1.1.4"
+    fi
 
     cflags="-${opt} ${CFLAGS_BASE} ${include_flags}"
 
@@ -87,14 +112,15 @@ for project_dir in "$CSIBE_DIR"/*/; do
     # any upstream Makefiles — they often use $(CC) defaults that don't
     # work for cross-compilation, and we only care about .o sizes anyway.
     build_ok=true
-    found_c=false
+    found_src=false
     while IFS= read -r -d '' src; do
-      found_c=true
-      obj="${src%.c}.o"
+      found_src=true
+      # Strip whatever the extension is (.c or .i) to derive the .o path.
+      obj="${src%.*}.o"
       "$CC" $cflags "$src" -o "$obj" 2>/dev/null || build_ok=false
-    done < <(find "$workdir" -name '*.c' -print0)
+    done < <(find "$workdir" \( -name '*.c' -o -name '*.i' \) -print0)
 
-    if ! $found_c; then
+    if ! $found_src; then
       rm -rf "$workdir"
       continue
     fi
