@@ -1,5 +1,11 @@
 # gcc-sh-monitor
 
+[![Dejagnu](https://mountain-reverie.github.io/gcc-sh-monitor/badge/dejagnu.svg)](https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/)
+[![CSiBE -Os](https://mountain-reverie.github.io/gcc-sh-monitor/badge/csibe.svg)](https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/)
+[![CoreMark .text](https://mountain-reverie.github.io/gcc-sh-monitor/badge/coremark.svg)](https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/)
+[![ci-full](https://github.com/mountain-reverie/gcc-sh-monitor/actions/workflows/ci-full.yml/badge.svg)](https://github.com/mountain-reverie/gcc-sh-monitor/actions/workflows/ci-full.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Continuous testing of GCC's SuperH (sh4) backend against upstream `master`.
 
 Watches `gcc-mirror/gcc`, runs cross-compiled tests on every change, and
@@ -9,10 +15,6 @@ notes) for architecture.
 **Status:** Increment 3 complete — dejagnu + CSiBE + CoreMark size tracking live.
 
 Dashboard: <https://mountain-reverie.github.io/gcc-sh-monitor/>
-Badges:
-![dejagnu](https://mountain-reverie.github.io/gcc-sh-monitor/badge/dejagnu.svg)
-![csibe](https://mountain-reverie.github.io/gcc-sh-monitor/badge/csibe.svg)
-![coremark](https://mountain-reverie.github.io/gcc-sh-monitor/badge/coremark.svg)
 
 ## Repository layout
 
