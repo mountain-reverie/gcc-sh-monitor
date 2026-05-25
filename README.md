@@ -6,10 +6,13 @@ Watches `gcc-mirror/gcc`, runs cross-compiled tests on every change, and
 publishes results to a public dashboard. See `docs/` (local-only design
 notes) for architecture.
 
-**Status:** Increment 2 complete — dejagnu `sh.exp` + dashboard live.
+**Status:** Increment 3 complete — dejagnu + CSiBE + CoreMark size tracking live.
 
 Dashboard: <https://mountain-reverie.github.io/gcc-sh-monitor/>
-Badge: ![dejagnu](https://mountain-reverie.github.io/gcc-sh-monitor/badge/dejagnu.svg)
+Badges:
+![dejagnu](https://mountain-reverie.github.io/gcc-sh-monitor/badge/dejagnu.svg)
+![csibe](https://mountain-reverie.github.io/gcc-sh-monitor/badge/csibe.svg)
+![coremark](https://mountain-reverie.github.io/gcc-sh-monitor/badge/coremark.svg)
 
 ## Repository layout
 
