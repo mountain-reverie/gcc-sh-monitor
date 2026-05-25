@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 python3-pip \
         jq curl git ca-certificates \
         ccache xz-utils \
+        libgmp-dev libmpfr-dev libmpc-dev libisl-dev libzstd-dev \
         gcc-sh4-linux-gnu \
         g++-sh4-linux-gnu \
         binutils-sh4-linux-gnu \
@@ -23,8 +24,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         binfmt-support \
     && rm -rf /var/lib/apt/lists/*
 
-# Sanity: cross gcc and qemu must be on PATH.
-RUN sh4-linux-gnu-gcc --version && qemu-sh4-static --version
+# Debian's libc6-dev-sh4-cross installs headers at /usr/sh4-linux-gnu/include
+# and libs at /usr/sh4-linux-gnu/lib, but upstream GCC's build assumes a
+# Unix-style sysroot with usr/include and usr/lib. Bridge that with a symlink.
+RUN ln -sfn . /usr/sh4-linux-gnu/usr
+
+# The Debian-shipped libc.so linker script hardcodes absolute /usr/sh4-linux-gnu/
+# paths. With --with-sysroot=/usr/sh4-linux-gnu the linker prefixes those again,
+# producing /usr/sh4-linux-gnu/usr/sh4-linux-gnu/... which doesn't exist. Rewrite
+# the script to use bare names so ld resolves them via -L search paths.
+RUN sed -i 's|/usr/sh4-linux-gnu/lib/||g' /usr/sh4-linux-gnu/lib/libc.so
+
+# Sanity: cross gcc and qemu must be on PATH; sysroot layout looks right.
+RUN sh4-linux-gnu-gcc --version \
+ && qemu-sh4-static --version \
+ && test -f /usr/sh4-linux-gnu/usr/include/stdio.h \
+ && test -f /usr/sh4-linux-gnu/usr/lib/crt1.o
 
 # Where vendored test suites will live in later increments.
 RUN mkdir -p /opt/test-suites
