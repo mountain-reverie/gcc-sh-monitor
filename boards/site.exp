@@ -1,0 +1,9 @@
+# DejaGnu site configuration. run-dejagnu.sh points DEJAGNU at this file.
+# Adds our boards/ directory to the search path.
+
+# Resolve our own directory rather than relying on PWD: dejagnu may
+# invoke runtest from any cwd (e.g. inside the gcc test tree).
+set _bd [file dirname [file normalize [info script]]]
+verbose "loading $_bd/site.exp"
+lappend boards_dir $_bd
+unset _bd

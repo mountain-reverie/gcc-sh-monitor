@@ -1,0 +1,57 @@
+# Custom DejaGnu board file for cross-compiled sh4-linux-gnu binaries
+# executed under qemu-sh4-static in user-mode emulation against the
+# Debian sh4 sysroot.
+
+load_generic_config "unix"
+process_multilib_options ""
+
+# Use the just-built compiler from /tmp/gcc-install (run-dejagnu.sh
+# guarantees this is on PATH before invoking runtest).
+set_board_info compiler  "sh4-linux-gnu-gcc"
+# -B points GCC at the Debian-provided cross binutils (sh4-linux-gnu-as /
+# -ld), since the just-built GCC does not ship its own assembler/linker.
+set_board_info cflags    "-B/usr/bin/sh4-linux-gnu-"
+set_board_info ldflags   "-B/usr/bin/sh4-linux-gnu-"
+
+# Sysroot lookup at compile and link time.
+set_board_info sysroot   "/usr/sh4-linux-gnu"
+
+# We run locally (no ssh, no remote copy).
+set_board_info hostname  "localhost"
+set_board_info isremote  0
+
+# Tell DejaGnu we cross-compile to a simulator-like target so execution
+# tests are gated through ${board}_load below.
+set_board_info target_install {sh4-linux-gnu}
+
+# Custom load proc: invoke qemu-sh4-static with sysroot for the
+# dynamic linker. Returns dejagnu-style result: {status output}.
+proc qemu-sh4_load { dest prog args } {
+    set qemu_bin "qemu-sh4-static"
+    set sysroot  "/usr/sh4-linux-gnu"
+    set inferior_args ""
+    if { [llength $args] > 0 } {
+        set inferior_args [join [lindex $args 0] " "]
+    }
+    set cmd "$qemu_bin -L $sysroot $prog $inferior_args"
+    verbose "qemu-sh4_load: $cmd" 2
+    # Use Tcl exec via sh -c so we get a single string, capturing
+    # combined stdout+stderr and the exit status.
+    set output ""
+    set status 0
+    if { [catch {exec /bin/sh -c "$cmd 2>&1"} output] } {
+        # catch returns non-zero on non-zero exit. Pull real exit code
+        # from errorCode if available, otherwise treat as fail.
+        global errorCode
+        if { [lindex $errorCode 0] eq "CHILDSTATUS" } {
+            set status [lindex $errorCode 2]
+        } else {
+            set status 1
+        }
+    }
+    verbose "qemu-sh4_load: status=$status output=$output" 2
+    if { $status == 0 } {
+        return [list "pass" $output]
+    }
+    return [list "fail" $output]
+}
