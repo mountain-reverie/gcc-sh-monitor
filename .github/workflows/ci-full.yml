@@ -1,14 +1,15 @@
 name: ci-full
 
 on:
-  # Sync workflow dispatches us explicitly (see sync.yml). The push trigger
-  # below catches manual edits to state/last-tested.json by a human, which
-  # GITHUB_TOKEN-authored pushes do NOT trigger.
+  # Sync workflow calls us as a reusable workflow (see sync.yml). The push
+  # trigger below catches manual edits to state/last-tested.json by a human,
+  # which GITHUB_TOKEN-authored pushes do NOT trigger.
   push:
     branches: [main]
     paths:
       - 'state/last-tested.json'
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

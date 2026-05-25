@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 concurrency:
   group: sync
@@ -16,6 +15,9 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+      commit: ${{ steps.check.outputs.commit }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -34,10 +36,13 @@ jobs:
           git commit -m "sync: upstream ${{ steps.check.outputs.commit }}"
           git push
 
-      # GITHUB_TOKEN-authored pushes do NOT trigger downstream workflows
-      # (GitHub policy, prevents recursion). Dispatch ci-full explicitly.
-      - name: Dispatch ci-full
-        if: steps.check.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run ci-full.yml --ref main
+  # GITHUB_TOKEN-authored pushes do NOT trigger downstream workflows
+  # (GitHub policy, prevents recursion). Invoke ci-full as a reusable
+  # workflow so it runs in the same logical event.
+  ci-full:
+    needs: check
+    if: needs.check.outputs.changed == 'true'
+    uses: ./.github/workflows/ci-full.yml
+    permissions:
+      contents: read
+      packages: read
