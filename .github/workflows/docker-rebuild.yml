@@ -1,0 +1,51 @@
+name: docker-rebuild
+
+on:
+  schedule:
+    - cron: '0 4 1 * *'   # 04:00 UTC on the 1st of each month
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'docker/Dockerfile.gcc-sh-base'
+      - '.github/workflows/docker-rebuild.yml'
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-rebuild
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Compute image tag
+        id: tag
+        run: echo "tag=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          file: docker/Dockerfile.gcc-sh-base
+          push: true
+          tags: |
+            ghcr.io/mountain-reverie/gcc-sh-base:${{ steps.tag.outputs.tag }}
+            ghcr.io/mountain-reverie/gcc-sh-base:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
