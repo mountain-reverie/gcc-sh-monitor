@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>gcc-sh-monitor — LRA differential</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header>
+    <h1><a href="../">gcc-sh-monitor</a> · LRA differential</h1>
+    <p id="summary" class="muted">Loading…</p>
+  </header>
+
+  <main>
+    <table id="lra-table" class="lra">
+      <thead>
+        <tr id="lra-head"><th>Case</th></tr>
+      </thead>
+      <tbody id="lra-body"></tbody>
+    </table>
+  </main>
+
+  <footer>
+    <p>
+      Raw: <a href="lra-results.json">lra-results.json</a> ·
+      <a href="https://github.com/mountain-reverie/gcc-sh-monitor/tree/main/lra-corpus">corpus source</a> ·
+      <a href="https://github.com/mountain-reverie/gcc-sh-monitor">repo</a>
+    </p>
+  </footer>
+
+  <script>
+    const REPO_BLOB = "https://github.com/mountain-reverie/gcc-sh-monitor/blob/main/lra-corpus";
+
+    fetch("lra-results.json", { cache: "no-cache" })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(render)
+      .catch(_ => {
+        document.getElementById("summary").textContent =
+          "No LRA results published yet.";
+      });
+
+    function render(data) {
+      const summary = document.getElementById("summary");
+      const shortCommit = data.commit.slice(0, 12);
+      summary.innerHTML =
+        `From upstream commit <a href="https://github.com/gcc-mirror/gcc/commit/${data.commit}"><code>${shortCommit}</code></a>` +
+        `, recorded ${data.date}. ` +
+        `<strong>${data.totals.diverged}</strong> diverged of ${data.totals.total} tuples ` +
+        `(<strong>${data.totals.current_ice}</strong> ICE in current).`;
+
+      // Discover the union of opt levels across all cases.
+      const optSet = new Set();
+      for (const c of data.cases) for (const r of c.results) optSet.add(r.opt);
+      const opts = Array.from(optSet).sort();
+
+      // Head row.
+      const head = document.getElementById("lra-head");
+      for (const opt of opts) {
+        const th = document.createElement("th");
+        th.textContent = "-" + opt;
+        head.appendChild(th);
+      }
+
+      // Body rows.
+      const body = document.getElementById("lra-body");
+      for (const c of data.cases) {
+        const tr = document.createElement("tr");
+        const nameCell = document.createElement("td");
+        const a = document.createElement("a");
+        a.href = `${REPO_BLOB}/${c.name}`;
+        a.textContent = c.name;
+        a.target = "_blank";
+        a.rel = "noopener";
+        nameCell.appendChild(a);
+        tr.appendChild(nameCell);
+
+        const byOpt = Object.fromEntries(c.results.map(r => [r.opt, r]));
+        for (const opt of opts) {
+          const cell = document.createElement("td");
+          const r = byOpt[opt];
+          if (!r) {
+            cell.className = "outcome skipped";
+            cell.textContent = "—";
+          } else {
+            cell.className = "outcome " + r.outcome.toLowerCase();
+            cell.textContent = shortLabel(r.outcome);
+            if (r.detail) cell.title = r.detail;
+          }
+          tr.appendChild(cell);
+        }
+        body.appendChild(tr);
+      }
+    }
+
+    function shortLabel(outcome) {
+      return {
+        BOTH_OK:     "✓",
+        DIVERGED:    "≠",
+        CURRENT_ICE: "ICE",
+        REF_ICE:     "ref-ICE",
+        BOTH_ICE:    "both-ICE",
+        SKIPPED:     "—",
+      }[outcome] || outcome;
+    }
+  </script>
+</body>
+</html>
