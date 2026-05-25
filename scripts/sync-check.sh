@@ -17,7 +17,7 @@ STATE_FILE="${STATE_FILE:-state/last-tested.json}"
 UPSTREAM="${UPSTREAM:-https://github.com/gcc-mirror/gcc.git}"
 BRANCH="${BRANCH:-master}"
 
-upstream_sha=$(git ls-remote "$UPSTREAM" "$BRANCH" | cut -f1)
+upstream_sha=$(git ls-remote "$UPSTREAM" "refs/heads/$BRANCH" | cut -f1)
 if [ -z "$upstream_sha" ]; then
   echo "sync-check: empty ls-remote result for $UPSTREAM $BRANCH" >&2
   exit 1
