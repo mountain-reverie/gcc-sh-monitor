@@ -4,8 +4,8 @@
   "metrics": {
     "dejagnu_fail_count": 36,
     "dejagnu_unresolved_count": 1,
-    "csibe_total_os_bytes": 1215066,
-    "csibe_total_o2_bytes": 1414326,
+    "csibe_total_os_bytes": 1538591,
+    "csibe_total_o2_bytes": 1809424,
     "coremark_text_bytes": 307884,
     "coremark_total_bytes": 700076
   }
