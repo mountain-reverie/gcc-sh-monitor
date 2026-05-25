@@ -55,11 +55,28 @@ jobs:
       - name: Run dejagnu sh.exp
         run: scripts/run-dejagnu.sh
 
-      - name: Parse results into benchmark-action JSON
+      - name: Parse dejagnu results
+        run: |
+          mkdir -p /tmp/metrics
+          python3 scripts/parse-dejagnu.py /tmp/dejagnu-out/gcc.sum \
+            > /tmp/metrics/dejagnu.json
+          cat /tmp/metrics/dejagnu.json
+
+      - name: Run CSiBE size measurements
+        run: scripts/run-csibe.sh
+
+      - name: Run CoreMark size measurement
+        run: scripts/run-coremark-size.sh
+
+      - name: Merge all metrics
         run: |
           mkdir -p metrics
-          python3 scripts/parse-dejagnu.py /tmp/dejagnu-out/gcc.sum > metrics/dejagnu.json
-          cat metrics/dejagnu.json
+          python3 scripts/merge-metrics.py \
+            /tmp/metrics/dejagnu.json \
+            /tmp/metrics/csibe.json \
+            /tmp/metrics/coremark.json \
+            > metrics/all.json
+          echo "Total metric entries: $(jq length metrics/all.json)"
 
       - name: Upload raw dejagnu artefacts
         uses: actions/upload-artifact@v4
@@ -74,7 +91,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: metrics
-          path: metrics/dejagnu.json
+          path: metrics/all.json
           retention-days: 1
 
   publish:
@@ -115,7 +132,7 @@ jobs:
         uses: benchmark-action/github-action-benchmark@v1
         with:
           tool: customSmallerIsBetter
-          output-file-path: metrics/dejagnu.json
+          output-file-path: metrics/all.json
           benchmark-data-dir-path: html/benchmark
           external-data-json-path: html/benchmark/benchmark-data.json
           github-token: ${{ secrets.DEPENDABOT_RECREATE_PAT }}
@@ -128,15 +145,28 @@ jobs:
           data=$(cat html/benchmark/benchmark-data.json 2>/dev/null || echo '{}')
           echo "window.BENCHMARK_DATA = $data" > html/benchmark/data.js
 
-      - name: Generate status badge
+      - name: Generate status badges
         run: |
-          FAIL=$(jq '[.[] | select(.name=="dejagnu_fail_count")][0].value' metrics/dejagnu.json)
-          COLOR="green"
-          [ "$FAIL" -gt 0 ] && COLOR="yellow"
-          [ "$FAIL" -gt 5 ] && COLOR="red"
           mkdir -p html/badge
-          curl -fsSL "https://img.shields.io/badge/dejagnu-${FAIL}%20fail-${COLOR}" \
+
+          # dejagnu badge — same logic as before, now reads all.json.
+          FAIL=$(jq '[.[] | select(.name=="dejagnu_fail_count")][0].value' metrics/all.json)
+          DEJAGNU_COLOR="green"
+          [ "$FAIL" -gt 0 ] && DEJAGNU_COLOR="yellow"
+          [ "$FAIL" -gt 5 ] && DEJAGNU_COLOR="red"
+          curl -fsSL "https://img.shields.io/badge/dejagnu-${FAIL}%20fail-${DEJAGNU_COLOR}" \
             -o html/badge/dejagnu.svg
+
+          # csibe badge — total -Os bytes converted to KB for readability.
+          CSIBE=$(jq '[.[] | select(.name=="csibe_total_os_bytes")][0].value' metrics/all.json)
+          CSIBE_KB=$((CSIBE / 1024))
+          curl -fsSL "https://img.shields.io/badge/csibe--Os-${CSIBE_KB}%20KB-blue" \
+            -o html/badge/csibe.svg
+
+          # coremark badge — .text section size in bytes.
+          COREMARK=$(jq '[.[] | select(.name=="coremark_text_bytes")][0].value' metrics/all.json)
+          curl -fsSL "https://img.shields.io/badge/coremark%20.text-${COREMARK}%20bytes-blue" \
+            -o html/badge/coremark.svg
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
