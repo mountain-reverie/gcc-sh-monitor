@@ -40,7 +40,6 @@ one subdir each:
 - `lwip-0.5.3.preproc`
 - `mpeg2dec-0.3.1`
 - `mpgcut-1.1`
-- `OpenTCP-1.0.4`
 - `replaypc-0.4.0.preproc`
 - `teem-1.6.0-src`
 - `ttt-0.10.1.preproc`

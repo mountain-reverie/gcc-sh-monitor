@@ -48,9 +48,6 @@ License: GPL. See `src/mpeg2dec-0.3.1/COPYING`.
 ## mpgcut-1.1
 License: GPL. See `src/mpgcut-1.1/COPYING`.
 
-## OpenTCP-1.0.4
-License: OpenTCP license (BSD-like). See `src/OpenTCP-1.0.4/license.txt`.
-
 ## replaypc-0.4.0.preproc
 License: GPL. See `src/replaypc-0.4.0.preproc/COPYING`.
 
