@@ -68,6 +68,9 @@ jobs:
       - name: Run CoreMark size measurement
         run: scripts/run-coremark-size.sh
 
+      - name: Run LRA differential watchdog
+        run: scripts/run-lra-corpus.sh
+
       - name: Merge all metrics
         run: |
           mkdir -p metrics
@@ -75,6 +78,7 @@ jobs:
             /tmp/metrics/dejagnu.json \
             /tmp/metrics/csibe.json \
             /tmp/metrics/coremark.json \
+            /tmp/metrics/lra.json \
             > metrics/all.json
           echo "Total metric entries: $(jq length metrics/all.json)"
 
@@ -87,11 +91,14 @@ jobs:
             /tmp/dejagnu-out/gcc.log.gz
           retention-days: 30
 
+      - name: Stage LRA per-case results for the publish job
+        run: cp /tmp/lra-results.json metrics/lra-results.json
+
       - name: Stash metrics for the publish job
         uses: actions/upload-artifact@v4
         with:
           name: metrics
-          path: metrics/all.json
+          path: metrics
           retention-days: 1
 
   publish:
@@ -143,6 +150,11 @@ jobs:
             echo "No prior valid data; benchmark-action will create the file"
           fi
 
+      - name: Stage LRA results into html/lra/
+        run: |
+          mkdir -p html/lra
+          cp metrics/lra-results.json html/lra/lra-results.json
+
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
@@ -182,6 +194,14 @@ jobs:
           COREMARK=$(jq '[.[] | select(.name=="coremark_text_bytes")][0].value' metrics/all.json)
           curl -fsSL "https://img.shields.io/badge/coremark%20.text-${COREMARK}%20bytes-blue" \
             -o html/badge/coremark.svg
+
+          # lra badge — diverged count, red if any
+          LRA=$(jq '[.[] | select(.name=="lra_diverged_count")][0].value' metrics/all.json)
+          LRA_COLOR="green"
+          [ "$LRA" -gt 0 ]  && LRA_COLOR="yellow"
+          [ "$LRA" -gt 3 ]  && LRA_COLOR="red"
+          curl -fsSL "https://img.shields.io/badge/lra-${LRA}%20diverged-${LRA_COLOR}" \
+            -o html/badge/lra.svg
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
