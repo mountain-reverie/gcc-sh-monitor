@@ -58,8 +58,11 @@ cd "$GCC_BUILD_DIR"
   --disable-werror \
   --prefix="$GCC_PREFIX"
 
-make -j"$JOBS" all-gcc all-target-libgcc
-make install-gcc install-target-libgcc
+# The SH backend's spec unconditionally injects -latomic_asneeded into the
+# link line, so libatomic must be present alongside libgcc — otherwise even
+# a trivial `int main(){}` fails to link.
+make -j"$JOBS" all-gcc all-target-libgcc all-target-libatomic
+make install-gcc install-target-libgcc install-target-libatomic
 
 echo "build-gcc: installed at $GCC_PREFIX"
 "$GCC_PREFIX/bin/sh4-linux-gnu-gcc" --version
