@@ -1,0 +1,42 @@
+name: sync-upstream
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run sync-check
+        id: check
+        run: scripts/sync-check.sh | tee -a "$GITHUB_OUTPUT"
+
+      - name: Commit and push if changed
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name  "gcc-sh-monitor[bot]"
+          git config user.email "noreply@github.com"
+          git add state/last-tested.json
+          git commit -m "sync: upstream ${{ steps.check.outputs.commit }}"
+          git push
+
+      # GITHUB_TOKEN-authored pushes do NOT trigger downstream workflows
+      # (GitHub policy, prevents recursion). Dispatch ci-full explicitly.
+      - name: Dispatch ci-full
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run ci-full.yml --ref main
