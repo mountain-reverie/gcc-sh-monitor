@@ -95,17 +95,20 @@ jobs:
         run: |
           mkdir -p html/benchmark
           cp -r dashboard/* html/
-          # If a prior dashboard is already published, fetch its benchmark
-          # data so the new run appends rather than replaces. Otherwise
-          # leave the file absent — benchmark-action creates it fresh in
-          # its own structured format (a wrong-format seed makes the action
-          # silently skip the write).
+          # If a prior dashboard is published with valid benchmark-action data
+          # (i.e. an object with .entries), seed from it so this run appends.
+          # Otherwise leave the file absent — benchmark-action creates it.
+          # A wrong-format seed makes the action silently skip the write.
+          tmp=$(mktemp)
           if curl --silent --fail \
               "https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/benchmark-data.json" \
-              -o html/benchmark/benchmark-data.json 2>/dev/null; then
+              -o "$tmp" 2>/dev/null \
+              && jq -e '.entries' "$tmp" >/dev/null 2>&1; then
+            mv "$tmp" html/benchmark/benchmark-data.json
             echo "Seeded with existing benchmark-data.json"
           else
-            echo "No prior data; benchmark-action will create the file"
+            rm -f "$tmp"
+            echo "No prior valid data; benchmark-action will create the file"
           fi
 
       - name: Store benchmark result
