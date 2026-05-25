@@ -15,13 +15,14 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    outputs:
-      changed: ${{ steps.check.outputs.changed }}
-      commit: ${{ steps.check.outputs.commit }}
     steps:
+      # Use a PAT so the resulting `git push` is authored by a real user and
+      # triggers downstream workflows (ci-full via its push paths filter).
+      # GITHUB_TOKEN-authored pushes are silently dropped by GitHub's
+      # recursion-prevention policy.
       - uses: actions/checkout@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.DEPENDABOT_RECREATE_PAT }}
 
       - name: Run sync-check
         id: check
@@ -35,14 +36,3 @@ jobs:
           git add state/last-tested.json
           git commit -m "sync: upstream ${{ steps.check.outputs.commit }}"
           git push
-
-  # GITHUB_TOKEN-authored pushes do NOT trigger downstream workflows
-  # (GitHub policy, prevents recursion). Invoke ci-full as a reusable
-  # workflow so it runs in the same logical event.
-  ci-full:
-    needs: check
-    if: needs.check.outputs.changed == 'true'
-    uses: ./.github/workflows/ci-full.yml
-    permissions:
-      contents: read
-      packages: read
