@@ -1,0 +1,26 @@
+Test Run By gcc-sh-monitor on Mon May 25 12:00:00 2026
+Native configuration is x86_64-pc-linux-gnu
+
+		=== gcc tests ===
+
+Schedule of variations:
+    qemu-sh4
+
+Running target qemu-sh4
+PASS: gcc.target/sh/pr12345.c (test for excess errors)
+PASS: gcc.target/sh/pr12345.c execution test
+FAIL: gcc.target/sh/pr55212-01.c (internal compiler error)
+FAIL: gcc.target/sh/pr55212-01.c (test for excess errors)
+UNRESOLVED: gcc.target/sh/pr67890.c compilation failed to produce executable
+UNSUPPORTED: gcc.target/sh/pr99999.c
+XFAIL: gcc.target/sh/pr11111.c scan-assembler something
+XPASS: gcc.target/sh/pr22222.c scan-assembler other
+
+		=== gcc Summary ===
+
+# of expected passes		2
+# of unexpected failures	2
+# of expected failures		1
+# of unresolved testcases	1
+# of unsupported tests		1
+# of unexpected successes	1
