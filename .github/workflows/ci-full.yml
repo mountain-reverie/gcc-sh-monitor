@@ -108,6 +108,21 @@ jobs:
           name: metrics
           path: metrics
 
+      - name: Fetch dejagnu sum file
+        uses: actions/download-artifact@v4
+        with:
+          name: dejagnu-${{ needs.build-and-test.outputs.commit }}
+          path: dejagnu-raw
+
+      - name: Extract failed tests
+        run: |
+          mkdir -p html/dejagnu
+          python3 scripts/extract-failures.py \
+            dejagnu-raw/gcc.sum \
+            "${{ needs.build-and-test.outputs.commit }}" \
+            > html/dejagnu/failures.json
+          echo "Failures: $(jq '.fail | length' html/dejagnu/failures.json), Unresolved: $(jq '.unresolved | length' html/dejagnu/failures.json)"
+
       - name: Prepare html dir + seed benchmark data
         run: |
           mkdir -p html/benchmark

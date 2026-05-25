@@ -19,3 +19,8 @@ h2 { margin-top: 2rem; }
 a { color: var(--accent); }
 footer { margin-top: 4rem; color: var(--muted); font-size: 0.9rem; }
 img { vertical-align: middle; }
+.muted { color: var(--muted); }
+ul.tests { list-style: none; padding-left: 0; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.92rem; }
+ul.tests li { margin: 0.15rem 0; }
+ul.tests .detail { color: var(--muted); }
+h3 { margin-top: 1.5rem; margin-bottom: 0.4rem; }

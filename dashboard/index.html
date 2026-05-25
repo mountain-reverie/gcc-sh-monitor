@@ -22,11 +22,71 @@
       Interactive trend charts:
       <a href="benchmark/">benchmark/</a>.
     </p>
+
+    <h2>Currently failing tests</h2>
+    <p id="fail-summary" class="muted">Loading…</p>
+    <div id="fail-section">
+      <h3>FAIL <span id="fail-count" class="muted"></span></h3>
+      <ul id="fail-list" class="tests"></ul>
+    </div>
+    <div id="unresolved-section">
+      <h3>UNRESOLVED <span id="unresolved-count" class="muted"></span></h3>
+      <ul id="unresolved-list" class="tests"></ul>
+    </div>
+
     <p>
       Raw per-run sum files are uploaded as workflow artefacts on
       <a href="https://github.com/mountain-reverie/gcc-sh-monitor/actions/workflows/ci-full.yml">the ci-full runs page</a>.
     </p>
   </main>
+
+  <script>
+    const GCC_BLOB = "https://github.com/gcc-mirror/gcc/blob";
+
+    fetch("dejagnu/failures.json", { cache: "no-cache" })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => {
+        const sum = document.getElementById("fail-summary");
+        const shortCommit = data.commit.slice(0, 12);
+        const commitUrl = `https://github.com/gcc-mirror/gcc/commit/${data.commit}`;
+        sum.innerHTML = `From upstream commit <a href="${commitUrl}"><code>${shortCommit}</code></a>, recorded ${data.date}.`;
+
+        render("fail-list", "fail-count", data.fail, data.commit);
+        render("unresolved-list", "unresolved-count", data.unresolved, data.commit);
+      })
+      .catch(err => {
+        document.getElementById("fail-summary").textContent =
+          "No failures data published yet (waiting for the next ci-full run).";
+        document.getElementById("fail-section").style.display = "none";
+        document.getElementById("unresolved-section").style.display = "none";
+      });
+
+    function render(listId, countId, items, commit) {
+      const list = document.getElementById(listId);
+      const count = document.getElementById(countId);
+      count.textContent = `(${items.length})`;
+      if (items.length === 0) {
+        list.innerHTML = "<li class=\"muted\">none</li>";
+        return;
+      }
+      for (const item of items) {
+        const li = document.createElement("li");
+        // gcc.target/sh/foo.c → href to gcc/testsuite/gcc.target/sh/foo.c at the run's commit
+        const sourcePath = `gcc/testsuite/${item.path}`;
+        const a = document.createElement("a");
+        a.href = `${GCC_BLOB}/${commit}/${sourcePath}`;
+        a.textContent = item.path;
+        a.target = "_blank";
+        a.rel = "noopener";
+        li.appendChild(a);
+        const det = document.createElement("span");
+        det.className = "detail";
+        det.textContent = " " + item.detail;
+        li.appendChild(det);
+        list.appendChild(li);
+      }
+    }
+  </script>
 
   <footer>
     <p>
