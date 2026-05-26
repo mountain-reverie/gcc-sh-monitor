@@ -11,6 +11,8 @@
     "lra_diverged_count": 0,
     "lra_current_ice_count": 0,
     "busybox_text_bytes": 1486948,
-    "busybox_smoke_pass": 10
+    "busybox_smoke_pass": 10,
+    "musl_libc_text_bytes": 359804,
+    "musl_smoke_pass": 1
   }
 }
