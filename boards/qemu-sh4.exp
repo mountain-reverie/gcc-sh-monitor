@@ -29,19 +29,23 @@ set_board_info target_install {sh4-linux-gnu}
 proc qemu-sh4_load { dest prog args } {
     set qemu_bin "qemu-sh4-static"
     set sysroot  "/usr/sh4-linux-gnu"
-    set inferior_args ""
+    set inferior_args [list]
     if { [llength $args] > 0 } {
-        set inferior_args [join [lindex $args 0] " "]
+        set inferior_args [lindex $args 0]
     }
-    set cmd "$qemu_bin -L $sysroot $prog $inferior_args"
-    verbose "qemu-sh4_load: $cmd" 2
-    # Use Tcl exec via sh -c so we get a single string, capturing
-    # combined stdout+stderr and the exit status.
+    verbose "qemu-sh4_load: $qemu_bin -L $sysroot $prog $inferior_args" 2
+
     set output ""
     set status 0
-    if { [catch {exec /bin/sh -c "$cmd 2>&1"} output] } {
-        # catch returns non-zero on non-zero exit. Pull real exit code
-        # from errorCode if available, otherwise treat as fail.
+    # Build the command as a Tcl list so {*}expansion passes each
+    # element as a distinct argv entry — no /bin/sh, no word splitting,
+    # no shell-metachar interpretation of $prog.
+    set cmd [list $qemu_bin -L $sysroot $prog]
+    if { [llength $inferior_args] > 0 } {
+        foreach a $inferior_args { lappend cmd $a }
+    }
+    # 2>@1 redirects the child's stderr to its stdout (captured by exec).
+    if { [catch {exec {*}$cmd 2>@1} output] } {
         global errorCode
         if { [lindex $errorCode 0] eq "CHILDSTATUS" } {
             set status [lindex $errorCode 2]
