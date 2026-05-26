@@ -34,6 +34,19 @@
       <h3>UNRESOLVED <span id="unresolved-count" class="muted"></span></h3>
       <ul id="unresolved-list" class="tests"></ul>
     </div>
+    <details id="stale-section">
+      <summary>Known stale (informational) <span id="stale-count" class="muted"></span></summary>
+      <p class="muted">
+        These tests fail dejagnu's scan-assembler exact-pattern checks but the
+        actual emitted code is equivalent or better — the tests' patterns
+        haven't kept up with GCC's evolution. See
+        <code>state/dejagnu-known-stale.json</code> for per-test rationale.
+      </p>
+      <h3>FAIL (stale) <span id="fail-stale-count" class="muted"></span></h3>
+      <ul id="fail-stale-list" class="tests"></ul>
+      <h3>UNRESOLVED (stale) <span id="unresolved-stale-count" class="muted"></span></h3>
+      <ul id="unresolved-stale-list" class="tests"></ul>
+    </details>
 
     <h2>LRA differential</h2>
     <p>
@@ -60,12 +73,22 @@
 
         render("fail-list", "fail-count", data.fail, data.commit);
         render("unresolved-list", "unresolved-count", data.unresolved, data.commit);
+
+        const staleTotal = (data.fail_stale || []).length + (data.unresolved_stale || []).length;
+        document.getElementById("stale-count").textContent = `(${staleTotal})`;
+        if (staleTotal === 0) {
+          document.getElementById("stale-section").style.display = "none";
+        } else {
+          render("fail-stale-list", "fail-stale-count", data.fail_stale || [], data.commit);
+          render("unresolved-stale-list", "unresolved-stale-count", data.unresolved_stale || [], data.commit);
+        }
       })
       .catch(err => {
         document.getElementById("fail-summary").textContent =
           "No failures data published yet (waiting for the next ci-full run).";
         document.getElementById("fail-section").style.display = "none";
         document.getElementById("unresolved-section").style.display = "none";
+        document.getElementById("stale-section").style.display = "none";
       });
 
     function render(listId, countId, items, commit) {

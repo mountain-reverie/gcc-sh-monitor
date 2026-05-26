@@ -1,0 +1,32 @@
+{
+  "description": "Dejagnu FAIL lines classified as test bit-rot rather than real GCC regressions. Triaged 2026-05-26 by reviewing scan-assembler patterns vs actual emitted code. Most fail because GCC's instruction selection improved or changed style; the tests still expect the old pattern. The pr51244 family is intentionally NOT in this list — those are real missed-optimization regressions.",
+  "stale": [
+    {"fail_signature": "gcc.target/sh/pr49263-1.c scan-assembler-times extu 1",                          "reason": "GCC now uses extu.b + cmp/hi instead of tst #imm — equivalent codegen",      "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr49263-2.c scan-assembler-times 65407 1",                         "reason": "different constant-load strategy, same correctness",                          "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr49263-2.c scan-assembler-times extu 1",                          "reason": "extension elided; downstream user encodes the high bit differently",          "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr49263-2.c scan-assembler-times tst\\t#255,r0 1",                 "reason": "tst #imm replaced by extu.b + cmp/hi — equivalent",                            "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr49263-4.c scan-assembler-not exts",                              "reason": "exts now emitted in a different (smaller) role",                              "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr49263-4.c scan-assembler-not extu",                              "reason": "extu now emitted in a different (smaller) role",                              "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr49263.c scan-assembler-not exts",                                "reason": "same family — exts appears in a more compact sequence",                       "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr49263.c scan-assembler-not extu",                                "reason": "same family — extu appears in a more compact sequence",                       "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr50749-qihisi-postinc-3.c scan-assembler-times mov.b\\t@r[0-9]+\\\\+,r[0-9]+ 1",   "reason": "loops now use indexed addressing instead of post-increment — fewer insns",   "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr50749-qihisi-postinc-3.c scan-assembler-times mov.l\\t@r[0-9]+\\\\+,r[0-9]+ 1",   "reason": "same family — post-inc replaced by indexed",                                  "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr50749-qihisi-postinc-3.c scan-assembler-times mov.w\\t@r[0-9]+\\\\+,r[0-9]+ 1",   "reason": "same family — post-inc replaced by indexed",                                  "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr50749-sf-postinc-3.c scan-assembler-times fmov.s\\t@r[0-9]+\\\\+,fr[0-9]+ 1",     "reason": "FP post-inc also replaced by indexed addressing",                             "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr52933-1.c scan-assembler-times div0s 42",                        "reason": "div0s emitted 40 times (close drift) — different code paths",                  "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr52933-1.c scan-assembler-times negc 10",                         "reason": "negc emitted 8 times — drift in division-sign idiom",                         "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr52933-2.c scan-assembler-times div0s 42",                        "reason": "same family — minor count drift",                                              "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr52933-2.c scan-assembler-times negc 10",                         "reason": "same family — minor count drift",                                              "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr53568-1.c scan-assembler-not {shll8|shlr8|shld|shad}",           "reason": "shlr8 leaked through once (was 0); bswap structure preserved",                "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr53568-1.c scan-assembler-times extu.w 2",                        "reason": "extu.w count off by 1 — codegen-form drift",                                  "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr53568-1.c scan-assembler-times mov 1",                           "reason": "mov count off by 1 in same direction",                                         "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr53987-1.c scan-assembler-times extu.b 2",                        "reason": "GCC eliminated redundant extu.b via cmp/eq — STRICTLY FEWER insns than test wanted", "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr53988-1.c scan-assembler-times extu.b 4",                        "reason": "extu.b folded into compare operands — better code",                            "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr53988-1.c scan-assembler-times extu.w 2",                        "reason": "extu.w similarly folded — better code",                                       "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr54236-6.c scan-assembler-times subc\\tr 1",                      "reason": "tst+subc peephole replaced by branch idiom — different but valid",            "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr64345-1.c scan-assembler-not exts|extu|sha|shld|subc|xor",       "reason": "small leakage of shld/exts/xor — mostly noise vs test's strict forbidlist",   "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr64345-1.c scan-assembler-times cmp/pz 6",                        "reason": "cmp/pz emitted 13 times — count drift in many-branch idiom",                  "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr64345-1.c scan-assembler-times shll\\t 6",                       "reason": "shll count drift",                                                             "first_seen": "2026-05-26"},
+    {"fail_signature": "gcc.target/sh/pr64345-1.c scan-assembler-times tst 716",                         "reason": "tst emitted 704 vs 716 — minor count drift",                                  "first_seen": "2026-05-26"}
+  ]
+}

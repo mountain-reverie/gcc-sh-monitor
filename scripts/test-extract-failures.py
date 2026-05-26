@@ -10,16 +10,16 @@ FIXTURE = HERE.parent / "tests" / "fixtures" / "sample.sum"
 SCRIPT = HERE / "extract-failures.py"
 COMMIT = "abc123def4567890abc123def4567890abc12345"
 
-def run(sum_path: Path, commit: str = COMMIT) -> dict:
-    result = subprocess.run(
-        [sys.executable, str(SCRIPT), str(sum_path), commit],
-        capture_output=True, text=True, check=True,
-    )
+def run(sum_path: Path, commit: str = COMMIT, stale_path: Path | None = None) -> dict:
+    cmd = [sys.executable, str(SCRIPT), str(sum_path), commit]
+    if stale_path is not None:
+        cmd.append(str(stale_path))
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     return json.loads(result.stdout)
 
 def test_emits_commit_date_fail_unresolved_fields():
     out = run(FIXTURE)
-    assert set(out.keys()) >= {"commit", "date", "fail", "unresolved"}, out
+    assert set(out.keys()) >= {"commit", "date", "fail", "fail_stale", "unresolved", "unresolved_stale"}, out
 
 def test_commit_passed_through():
     out = run(FIXTURE)
@@ -57,6 +57,43 @@ def test_handles_no_failures():
     out = run(path)
     assert out["fail"] == []
     assert out["unresolved"] == []
+    assert out["fail_stale"] == []
+    assert out["unresolved_stale"] == []
+
+def test_partitions_known_stale_failures():
+    # Synthetic sum: one stale FAIL, one active FAIL, one stale UNRESOLVED,
+    # one active UNRESOLVED.
+    sum_text = (
+        "FAIL: gcc.target/sh/stalefail.c scan-assembler-times foo 1\n"
+        "FAIL: gcc.target/sh/activefail.c (internal compiler error)\n"
+        "UNRESOLVED: gcc.target/sh/staleun.c whatever\n"
+        "UNRESOLVED: gcc.target/sh/activeun.c compilation failed\n"
+    )
+    stale_json = {
+        "description": "test",
+        "stale": [
+            {"fail_signature": "gcc.target/sh/stalefail.c scan-assembler-times foo 1",
+             "reason": "x", "first_seen": "2026-05-26"},
+            {"fail_signature": "gcc.target/sh/staleun.c whatever",
+             "reason": "y", "first_seen": "2026-05-26"},
+        ],
+    }
+    with tempfile.NamedTemporaryFile("w", suffix=".sum", delete=False) as f:
+        f.write(sum_text)
+        sum_path = Path(f.name)
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump(stale_json, f)
+        stale_path = Path(f.name)
+    out = run(sum_path, stale_path=stale_path)
+    assert len(out["fail"]) == 1 and out["fail"][0]["path"] == "gcc.target/sh/activefail.c", out
+    assert len(out["fail_stale"]) == 1 and out["fail_stale"][0]["path"] == "gcc.target/sh/stalefail.c", out
+    assert len(out["unresolved"]) == 1 and out["unresolved"][0]["path"] == "gcc.target/sh/activeun.c", out
+    assert len(out["unresolved_stale"]) == 1 and out["unresolved_stale"][0]["path"] == "gcc.target/sh/staleun.c", out
+
+def test_no_annotation_means_empty_stale_arrays():
+    out = run(FIXTURE)
+    assert out["fail_stale"] == []
+    assert out["unresolved_stale"] == []
 
 if __name__ == "__main__":
     tests = [v for k, v in globals().items() if k.startswith("test_")]

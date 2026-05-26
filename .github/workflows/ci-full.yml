@@ -127,8 +127,9 @@ jobs:
           python3 scripts/extract-failures.py \
             dejagnu-raw/gcc.sum \
             "${{ needs.build-and-test.outputs.commit }}" \
+            state/dejagnu-known-stale.json \
             > html/dejagnu/failures.json
-          echo "Failures: $(jq '.fail | length' html/dejagnu/failures.json), Unresolved: $(jq '.unresolved | length' html/dejagnu/failures.json)"
+          echo "Failures: $(jq '.fail | length' html/dejagnu/failures.json) (+ $(jq '.fail_stale | length' html/dejagnu/failures.json) known-stale)"
 
       - name: Prepare html dir + seed benchmark data
         run: |
