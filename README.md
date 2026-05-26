@@ -4,6 +4,7 @@
 [![CSiBE -Os](https://mountain-reverie.github.io/gcc-sh-monitor/badge/csibe.svg)](https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/)
 [![CoreMark .text](https://mountain-reverie.github.io/gcc-sh-monitor/badge/coremark.svg)](https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/)
 [![BusyBox](https://mountain-reverie.github.io/gcc-sh-monitor/badge/busybox.svg)](https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/)
+[![musl](https://mountain-reverie.github.io/gcc-sh-monitor/badge/musl.svg)](https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/)
 [![LRA](https://mountain-reverie.github.io/gcc-sh-monitor/badge/lra.svg)](https://mountain-reverie.github.io/gcc-sh-monitor/lra/)
 [![ci-full](https://github.com/mountain-reverie/gcc-sh-monitor/actions/workflows/ci-full.yml/badge.svg)](https://github.com/mountain-reverie/gcc-sh-monitor/actions/workflows/ci-full.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -14,7 +15,7 @@ Watches `gcc-mirror/gcc`, runs cross-compiled tests on every change, and
 publishes results to a public dashboard. See `docs/` (local-only design
 notes) for architecture.
 
-**Status:** dejagnu + CSiBE + CoreMark + LRA + BusyBox live.
+**Status:** dejagnu + CSiBE + CoreMark + LRA + BusyBox + musl live.
 
 Dashboard: <https://mountain-reverie.github.io/gcc-sh-monitor/>
 
