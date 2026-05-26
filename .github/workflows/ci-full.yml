@@ -71,6 +71,9 @@ jobs:
       - name: Run LRA differential watchdog
         run: scripts/run-lra-corpus.sh
 
+      - name: Run BusyBox build + smoke + size
+        run: scripts/run-busybox.sh
+
       - name: Merge all metrics
         run: |
           mkdir -p metrics
@@ -79,6 +82,7 @@ jobs:
             /tmp/metrics/csibe.json \
             /tmp/metrics/coremark.json \
             /tmp/metrics/lra.json \
+            /tmp/metrics/busybox.json \
             > metrics/all.json
           echo "Total metric entries: $(jq length metrics/all.json)"
 
@@ -211,6 +215,18 @@ jobs:
           [ "$LRA" -gt 3 ]  && LRA_COLOR="red"
           curl -fsSL "https://img.shields.io/badge/lra-${LRA}%20diverged-${LRA_COLOR}" \
             -o html/badge/lra.svg
+
+          # busybox badge — .text in KB plus smoke (P/10), coloured by smoke pass
+          BBT=$(jq '[.[] | select(.name=="busybox_text_bytes")][0].value' metrics/all.json)
+          [[ "$BBT" =~ ^[0-9]+$ ]] || { echo "::error::busybox_text_bytes missing or non-numeric (got: $BBT)"; exit 1; }
+          BBP=$(jq '[.[] | select(.name=="busybox_smoke_pass")][0].value' metrics/all.json)
+          [[ "$BBP" =~ ^[0-9]+$ ]] || { echo "::error::busybox_smoke_pass missing or non-numeric (got: $BBP)"; exit 1; }
+          BBT_KB=$((BBT / 1024))
+          BB_COLOR="green"
+          [ "$BBP" -lt 10 ] && BB_COLOR="yellow"
+          if [ "$BBP" -eq 0 ] || [ "$BBT" -eq 0 ]; then BB_COLOR="red"; fi
+          curl -fsSL "https://img.shields.io/badge/busybox-${BBT_KB}%20KB%20(${BBP}%2F10)-${BB_COLOR}" \
+            -o html/badge/busybox.svg
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
