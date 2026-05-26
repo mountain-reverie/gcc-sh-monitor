@@ -54,20 +54,25 @@ declare -A counts=(
 total=0
 case_jsons=()
 
-# Extract per-test dg-options flags from a .c file's directive, stripping any
-# -O? so our per-opt iteration drives that dimension. Returns the cleaned
-# flag string (possibly empty) on stdout. Handles multi-line dg-options
-# directives by stripping intervening whitespace and comment continuations.
+# Extract per-test dg-options flags from a .c file's directive. Returns the
+# cleaned flag string (possibly empty) on stdout.
+#
+# Strips:
+#   -O?   — our per-opt iteration drives that dimension.
+#   -m4   — redundant with our sh4-linux-gnu target default, and triggers a
+#           latent multilib path issue in our build (the `!m4/` ghost
+#           subdir flagged in Inc 1) that breaks sysroot library lookup.
+#
+# Handles multi-line dg-options directives by collapsing newlines first.
 extract_dg_options() {
   local src="$1"
-  # Concatenate the file's leading comment region (first 50 lines is generous),
-  # collapse newlines, then regex the dg-options content.
   head -50 "$src" \
     | tr '\n' ' ' \
     | grep -oE 'dg-options[[:space:]]*"[^"]*"' \
     | head -1 \
     | sed -e 's/^dg-options[[:space:]]*"//' -e 's/"$//' \
     | sed -E 's/-O[0-9sg]+\b//g; s/-O[ ]+[0-9sg]+\b//g' \
+    | sed -E 's/(^| )-m4( |$)/\1\2/g' \
     || true
 }
 
