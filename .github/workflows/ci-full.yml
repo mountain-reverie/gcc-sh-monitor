@@ -178,6 +178,7 @@ jobs:
 
           # dejagnu badge — same logic as before, now reads all.json.
           FAIL=$(jq '[.[] | select(.name=="dejagnu_fail_count")][0].value' metrics/all.json)
+          [[ "$FAIL" =~ ^[0-9]+$ ]] || { echo "::error::dejagnu_fail_count missing or non-numeric (got: $FAIL)"; exit 1; }
           DEJAGNU_COLOR="green"
           [ "$FAIL" -gt 0 ] && DEJAGNU_COLOR="yellow"
           [ "$FAIL" -gt 5 ] && DEJAGNU_COLOR="red"
@@ -186,17 +187,20 @@ jobs:
 
           # csibe badge — total -Os bytes converted to KB for readability.
           CSIBE=$(jq '[.[] | select(.name=="csibe_total_os_bytes")][0].value' metrics/all.json)
+          [[ "$CSIBE" =~ ^[0-9]+$ ]] || { echo "::error::csibe_total_os_bytes missing or non-numeric (got: $CSIBE)"; exit 1; }
           CSIBE_KB=$((CSIBE / 1024))
           curl -fsSL "https://img.shields.io/badge/csibe--Os-${CSIBE_KB}%20KB-blue" \
             -o html/badge/csibe.svg
 
           # coremark badge — .text section size in bytes.
           COREMARK=$(jq '[.[] | select(.name=="coremark_text_bytes")][0].value' metrics/all.json)
+          [[ "$COREMARK" =~ ^[0-9]+$ ]] || { echo "::error::coremark_text_bytes missing or non-numeric (got: $COREMARK)"; exit 1; }
           curl -fsSL "https://img.shields.io/badge/coremark%20.text-${COREMARK}%20bytes-blue" \
             -o html/badge/coremark.svg
 
           # lra badge — diverged count, red if any
           LRA=$(jq '[.[] | select(.name=="lra_diverged_count")][0].value' metrics/all.json)
+          [[ "$LRA" =~ ^[0-9]+$ ]] || { echo "::error::lra_diverged_count missing or non-numeric (got: $LRA)"; exit 1; }
           LRA_COLOR="green"
           [ "$LRA" -gt 0 ]  && LRA_COLOR="yellow"
           [ "$LRA" -gt 3 ]  && LRA_COLOR="red"
