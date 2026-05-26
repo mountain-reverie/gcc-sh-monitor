@@ -153,6 +153,10 @@ jobs:
       - name: Stage LRA results into html/lra/
         run: |
           mkdir -p html/lra
+          if [ ! -f metrics/lra-results.json ]; then
+            echo "::warning::lra-results.json missing — LRA panel will show no data"
+            exit 0
+          fi
           cp metrics/lra-results.json html/lra/lra-results.json
 
       - name: Store benchmark result
