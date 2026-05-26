@@ -43,12 +43,16 @@ fi
 # -w suppresses warnings (we measure size, not test cleanliness).
 # -DHAVE_CONFIG_H enables config.h paths in projects shipping one (e.g. flex).
 # -Wno-error=* keeps GCC 14+ from refusing K&R-era code (e.g. compiler subproject).
-CFLAGS_BASE="-B/usr/bin/sh4-linux-gnu- -c -w \
-  -std=gnu11 \
-  -DHAVE_CONFIG_H \
-  -Wno-error=implicit-function-declaration \
-  -Wno-error=implicit-int \
-  -Wno-error=int-conversion"
+CFLAGS_BASE=(
+  -B/usr/bin/sh4-linux-gnu-
+  -c
+  -w
+  -std=gnu11
+  -DHAVE_CONFIG_H
+  -Wno-error=implicit-function-declaration
+  -Wno-error=implicit-int
+  -Wno-error=int-conversion
+)
 
 # Sum .text + .rodata + .data across all .o files in $1.
 size_of_objects() {
@@ -71,6 +75,11 @@ entries=()
 total_os=0
 total_o2=0
 
+# Declared once; reset to empty at the top of each inner iteration.
+# Avoids relying on per-iteration `declare -A`/`unset`, which is brittle
+# across bash versions.
+declare -A include_set
+
 for project_dir in "$CSIBE_DIR"/*/; do
   [ -d "$project_dir" ] || continue
   project=$(basename "$project_dir")
@@ -83,7 +92,7 @@ for project_dir in "$CSIBE_DIR"/*/; do
     # ancestor of those dirs up to $workdir. Some projects do
     # `#include <subdir/foo.h>` where the header sits in $workdir/<...>/subdir/;
     # the include flag needs to point at the parent dir, not the dir itself.
-    declare -A include_set
+    include_set=()
     include_set["$workdir"]=1
     while IFS= read -r -d '' hdr_dir; do
       # Walk from hdr_dir up to workdir.
@@ -94,18 +103,15 @@ for project_dir in "$CSIBE_DIR"/*/; do
       done
     done < <(find "$workdir" -name '*.h' -printf '%h\0' | sort -uz)
 
-    include_flags=""
+    include_flags=()
     for d in "${!include_set[@]}"; do
-      include_flags+=" -I$d"
+      include_flags+=("-I$d")
     done
-    unset include_set
 
     # Special-case: libpng needs zlib headers from a sibling subproject.
     if [ "$project" = "libpng-1.2.5" ] && [ -d "$CSIBE_DIR/zlib-1.1.4" ]; then
-      include_flags+=" -I$CSIBE_DIR/zlib-1.1.4"
+      include_flags+=("-I$CSIBE_DIR/zlib-1.1.4")
     fi
-
-    cflags="-${opt} ${CFLAGS_BASE} ${include_flags}"
 
     # Find all .c files (recursively in case of nested layouts), compile each
     # individually to .o using our cross compiler. We deliberately ignore
@@ -117,7 +123,7 @@ for project_dir in "$CSIBE_DIR"/*/; do
       found_src=true
       # Strip whatever the extension is (.c or .i) to derive the .o path.
       obj="${src%.*}.o"
-      "$CC" $cflags "$src" -o "$obj" 2>/dev/null || build_ok=false
+      "$CC" "${CFLAGS_BASE[@]}" "${include_flags[@]}" "-${opt}" "$src" -o "$obj" 2>/dev/null || build_ok=false
     done < <(find "$workdir" \( -name '*.c' -o -name '*.i' \) -print0)
 
     if ! $found_src; then
