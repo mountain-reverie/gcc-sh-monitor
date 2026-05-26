@@ -34,4 +34,5 @@ td.outcome.diverged    { background: #fff3cd; color: #856404; }
 td.outcome.current_ice { background: #f8d7da; color: #721c24; }
 td.outcome.ref_ice     { background: #d1ecf1; color: #0c5460; }
 td.outcome.both_ice    { background: #e2e3e5; color: #383d41; }
+td.outcome.timeout     { background: #fff3cd; color: #856404; }
 td.outcome.skipped     { background: #f5f5f5; color: #999; }

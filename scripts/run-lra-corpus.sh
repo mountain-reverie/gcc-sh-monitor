@@ -49,7 +49,7 @@ command -v sha256sum >/dev/null || { echo "run-lra: missing sha256sum" >&2; exit
 mkdir -p "$(dirname "$METRICS_FILE")" "$(dirname "$RESULTS_FILE")"
 
 declare -A counts=(
-  [BOTH_OK]=0 [DIVERGED]=0 [CURRENT_ICE]=0 [REF_ICE]=0 [BOTH_ICE]=0 [SKIPPED]=0
+  [BOTH_OK]=0 [DIVERGED]=0 [CURRENT_ICE]=0 [REF_ICE]=0 [BOTH_ICE]=0 [SKIPPED]=0 [TIMEOUT]=0
 )
 total=0
 case_jsons=()
@@ -67,9 +67,14 @@ compile_one() {
 
 run_under_qemu() {
   local bin="$1"
-  local stdout
-  stdout=$(timeout 10 "$QEMU" -L "$SYSROOT" "$bin" 2>/dev/null) || true
-  local exit_code=$?
+  local stdout exit_code
+  stdout=$(timeout 10 "$QEMU" -L "$SYSROOT" "$bin" 2>/dev/null) ; exit_code=$?
+  # Emit a distinct marker for timeout so the caller doesn't collapse
+  # two hung binaries into BOTH_OK via matching "124:<empty-hash>".
+  if [ "$exit_code" = "124" ]; then
+    echo "TIMEOUT"
+    return
+  fi
   local hash
   hash=$(printf '%s' "$stdout" | sha256sum | cut -d' ' -f1)
   echo "$exit_code:$hash"
@@ -103,7 +108,10 @@ while IFS= read -r case_name; do
       if [ "$expected" = "compiles_and_runs" ]; then
         cur_res=$(run_under_qemu "$cur_out")
         ref_res=$(run_under_qemu "$ref_out")
-        if [ "$cur_res" = "$ref_res" ]; then
+        if [ "$cur_res" = "TIMEOUT" ] || [ "$ref_res" = "TIMEOUT" ]; then
+          outcome=TIMEOUT
+          detail="cur=$cur_res ref=$ref_res"
+        elif [ "$cur_res" = "$ref_res" ]; then
           outcome=BOTH_OK
         else
           outcome=DIVERGED
@@ -133,7 +141,7 @@ while IFS= read -r case_name; do
   case_jsons+=("{\"name\":\"$case_name\",\"expected\":\"$expected\",\"results\":[$per_opt_csv]}")
 done < <(jq -r 'keys[]' <<< "$manifest")
 
-diverged=$((counts[DIVERGED] + counts[CURRENT_ICE]))
+diverged=$((counts[DIVERGED] + counts[CURRENT_ICE] + counts[TIMEOUT]))
 
 cat > "$METRICS_FILE" <<EOF
 [
@@ -149,5 +157,5 @@ printf '{"commit":"%s","date":"%s","totals":{"diverged":%d,"current_ice":%d,"tot
   "$COMMIT" "$date_now" "$diverged" "${counts[CURRENT_ICE]}" "$total" "$cases_csv" \
   | jq . > "$RESULTS_FILE"
 
-echo "run-lra: $total tuples — BOTH_OK=${counts[BOTH_OK]} DIVERGED=${counts[DIVERGED]} CURRENT_ICE=${counts[CURRENT_ICE]} REF_ICE=${counts[REF_ICE]} BOTH_ICE=${counts[BOTH_ICE]}"
+echo "run-lra: $total tuples — BOTH_OK=${counts[BOTH_OK]} DIVERGED=${counts[DIVERGED]} CURRENT_ICE=${counts[CURRENT_ICE]} REF_ICE=${counts[REF_ICE]} BOTH_ICE=${counts[BOTH_ICE]} TIMEOUT=${counts[TIMEOUT]}"
 echo "run-lra: wrote $METRICS_FILE and $RESULTS_FILE"
