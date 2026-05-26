@@ -75,14 +75,17 @@ run_under_qemu() {
   echo "$exit_code:$hash"
 }
 
+# Read the manifest once; reuse via jq <<<"$manifest" inside the loop.
+manifest=$(cat "$CORPUS_DIR/manifest.json")
+
 while IFS= read -r case_name; do
   case_path="$CORPUS_DIR/$case_name"
   if [ ! -f "$case_path" ]; then
     echo "run-lra: missing case file $case_path (in manifest)" >&2
     continue
   fi
-  expected=$(jq -r --arg n "$case_name" '.[$n].expected' "$CORPUS_DIR/manifest.json")
-  mapfile -t opts < <(jq -r --arg n "$case_name" '.[$n].opt_levels[]' "$CORPUS_DIR/manifest.json")
+  expected=$(jq -r --arg n "$case_name" '.[$n].expected' <<< "$manifest")
+  mapfile -t opts < <(jq -r --arg n "$case_name" '.[$n].opt_levels[]' <<< "$manifest")
 
   per_opt_jsons=()
 
@@ -128,7 +131,7 @@ while IFS= read -r case_name; do
 
   per_opt_csv=$(IFS=,; echo "${per_opt_jsons[*]}")
   case_jsons+=("{\"name\":\"$case_name\",\"expected\":\"$expected\",\"results\":[$per_opt_csv]}")
-done < <(jq -r 'keys[]' "$CORPUS_DIR/manifest.json")
+done < <(jq -r 'keys[]' <<< "$manifest")
 
 diverged=$((counts[DIVERGED] + counts[CURRENT_ICE]))
 
