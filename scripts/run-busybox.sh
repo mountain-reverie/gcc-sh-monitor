@@ -62,8 +62,18 @@ fi
 
 workdir=$(mktemp -d)
 trap 'rm -rf "$workdir"' EXIT
-cp -r "$BUSYBOX_DIR"/* "$workdir"/
+# `cp -a SRC/. DST/` copies everything including dotfiles, preserves perms,
+# and avoids shell-glob argv overflow when BUSYBOX_DIR has thousands of files
+# (which is the case — ~6k files for BusyBox 1.37).
+cp -a "$BUSYBOX_DIR"/. "$workdir"/
 cd "$workdir"
+
+if [ ! -f Config.in ]; then
+  echo "run-busybox: workdir layout broken (Config.in missing). Listing:" >&2
+  ls -la "$workdir" >&2 | head -30
+  emit_zero "workdir copy incomplete"
+  exit 0
+fi
 
 echo "run-busybox: configuring..."
 export ARCH=sh
