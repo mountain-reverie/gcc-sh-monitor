@@ -1,6 +1,6 @@
 {
   "established_at": "2026-05-26",
-  "commit": "8d81ccde31888032b031995ec2c20341eb7541ac",
+  "commit": "c028b7c645514cfbd682bef364734314c01745d6",
   "metrics": {
     "dejagnu_fail_count": 36,
     "dejagnu_unresolved_count": 1,
@@ -9,6 +9,8 @@
     "coremark_text_bytes": 307884,
     "coremark_total_bytes": 700076,
     "lra_diverged_count": 0,
-    "lra_current_ice_count": 0
+    "lra_current_ice_count": 0,
+    "busybox_text_bytes": 1486948,
+    "busybox_smoke_pass": 10
   }
 }
