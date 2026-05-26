@@ -71,7 +71,9 @@ export ARCH=sh
 # none — no as/ld/ar). CC is overridden to the candidate compiler.
 export CROSS_COMPILE="/usr/bin/sh4-linux-gnu-"
 
-if ! make defconfig CC="$CC" >/dev/null 2>&1; then
+if ! make defconfig CC="$CC" >"$workdir/defconfig.out" 2>&1; then
+  echo "run-busybox: defconfig failed. Output:" >&2
+  tail -30 "$workdir/defconfig.out" >&2
   emit_zero "defconfig failed"
   exit 0
 fi
