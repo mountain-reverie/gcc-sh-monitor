@@ -54,15 +54,34 @@ declare -A counts=(
 total=0
 case_jsons=()
 
+# Extract per-test dg-options flags from a .c file's directive, stripping any
+# -O? so our per-opt iteration drives that dimension. Returns the cleaned
+# flag string (possibly empty) on stdout. Handles multi-line dg-options
+# directives by stripping intervening whitespace and comment continuations.
+extract_dg_options() {
+  local src="$1"
+  # Concatenate the file's leading comment region (first 50 lines is generous),
+  # collapse newlines, then regex the dg-options content.
+  head -50 "$src" \
+    | tr '\n' ' ' \
+    | grep -oE 'dg-options[[:space:]]*"[^"]*"' \
+    | head -1 \
+    | sed -e 's/^dg-options[[:space:]]*"//' -e 's/"$//' \
+    | sed -E 's/-O[0-9sg]+\b//g; s/-O[ ]+[0-9sg]+\b//g' \
+    || true
+}
+
 compile_one() {
-  local compiler="$1" src="$2" opt="$3" out="$4" mode="$5"
+  local compiler="$1" src="$2" opt="$3" out="$4" mode="$5" extra="$6"
   local flags
   if [ "$mode" = "compiles_and_runs" ]; then
     flags="-B/usr/bin/sh4-linux-gnu- --sysroot=$SYSROOT -$opt -w -static"
   else
     flags="-c -B/usr/bin/sh4-linux-gnu- --sysroot=$SYSROOT -$opt -w"
   fi
-  "$compiler" $flags "$src" -o "$out" >/dev/null 2>&1
+  # $extra (parsed dg-options, sans -O?) intentionally unquoted: it may
+  # contain multiple flags that must word-split.
+  "$compiler" $flags $extra "$src" -o "$out" >/dev/null 2>&1
 }
 
 run_under_qemu() {
@@ -91,6 +110,7 @@ while IFS= read -r case_name; do
   fi
   expected=$(jq -r --arg n "$case_name" '.[$n].expected' <<< "$manifest")
   mapfile -t opts < <(jq -r --arg n "$case_name" '.[$n].opt_levels[]' <<< "$manifest")
+  dg_flags=$(extract_dg_options "$case_path")
 
   per_opt_jsons=()
 
@@ -101,8 +121,8 @@ while IFS= read -r case_name; do
     cur_ok=true; ref_ok=true
     detail=""
 
-    compile_one "$CUR"     "$case_path" "$opt" "$cur_out" "$expected" || cur_ok=false
-    compile_one "$REF_GCC" "$case_path" "$opt" "$ref_out" "$expected" || ref_ok=false
+    compile_one "$CUR"     "$case_path" "$opt" "$cur_out" "$expected" "$dg_flags" || cur_ok=false
+    compile_one "$REF_GCC" "$case_path" "$opt" "$ref_out" "$expected" "$dg_flags" || ref_ok=false
 
     if $cur_ok && $ref_ok; then
       if [ "$expected" = "compiles_and_runs" ]; then
