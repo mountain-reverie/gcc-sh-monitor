@@ -15,7 +15,7 @@ Watches `gcc-mirror/gcc`, runs cross-compiled tests on every change, and
 publishes results to a public dashboard. See `docs/` (local-only design
 notes) for architecture.
 
-**Status:** dejagnu + LRA (sh4) + CSiBE + CoreMark + BusyBox + musl (sh4/arm/x86) live.
+**Status:** dejagnu + LRA (sh4) + CSiBE + CoreMark + BusyBox (glibc + musl) + musl libc (sh4/arm/x86) live.
 
 Dashboard: <https://mountain-reverie.github.io/gcc-sh-monitor/>
 
