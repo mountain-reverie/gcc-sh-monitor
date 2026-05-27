@@ -1,32 +1,58 @@
 #!/usr/bin/env bash
-# Cross-compile BusyBox with the sh4-linux-gnu cross compiler, smoke-test
-# the result under qemu-sh4-static, and measure section sizes. Emits
-# /tmp/metrics/busybox.json with five entries.
+# Cross-compile BusyBox with a TARGET-tuple cross compiler, smoke-test the
+# result under the matching qemu-user-static binary, and measure section
+# sizes. Emits /tmp/metrics/busybox-${ARCH}.json with five entries.
 #
 # Build failure → all metrics emit as 0 (script returns 0 so CI proceeds).
 # Build succeeds, smoke partially passes → size metrics ship, smoke_pass
 #                                          reflects actual count.
 #
 # Environment:
+#   TARGET         GNU triple: sh4-linux-gnu (default) | arm-linux-gnueabihf
+#                  | i686-linux-gnu
 #   GCC_PREFIX     install dir of the candidate GCC (default: /tmp/gcc-install)
 #   BUSYBOX_DIR    vendored source (default: $PWD/busybox)
-#   OUT_FILE       output JSON (default: /tmp/metrics/busybox.json)
+#   OUT_FILE       output JSON (default: /tmp/metrics/busybox-${ARCH}.json)
 #   JOBS           parallel build jobs (default: $(nproc))
 
 set -euo pipefail
 
 GCC_PREFIX="${GCC_PREFIX:-/tmp/gcc-install}"
 BUSYBOX_DIR="${BUSYBOX_DIR:-$PWD/busybox}"
-OUT_FILE="${OUT_FILE:-/tmp/metrics/busybox.json}"
 JOBS="${JOBS:-$(nproc)}"
 
-# Custom GCC ships no binutils; -B steers it at Debian's sh4 binutils.
-# Without this, gcc calls the host x86 'as', which rejects '-little'.
-CC_RAW="$GCC_PREFIX/bin/sh4-linux-gnu-gcc"
-CC="$CC_RAW -B/usr/bin/sh4-linux-gnu-"
-SIZE="${SH4_SIZE:-/usr/bin/sh4-linux-gnu-size}"
-QEMU="qemu-sh4-static"
-SYSROOT="/usr/sh4-linux-gnu"
+TARGET="${TARGET:-sh4-linux-gnu}"
+case "$TARGET" in
+  sh4-linux-gnu)
+    ARCH=sh4
+    QEMU=qemu-sh4-static
+    BB_ARCH=sh
+    SYSROOT=/usr/sh4-linux-gnu
+    ;;
+  arm-linux-gnueabihf)
+    ARCH=arm
+    QEMU=qemu-arm-static
+    BB_ARCH=arm
+    SYSROOT=/usr/arm-linux-gnueabihf
+    ;;
+  i686-linux-gnu)
+    ARCH=x86
+    QEMU=qemu-i386-static
+    BB_ARCH=x86
+    SYSROOT=/usr/i686-linux-gnu
+    ;;
+  *)
+    echo "run-busybox: unsupported TARGET=$TARGET" >&2
+    exit 2
+    ;;
+esac
+OUT_FILE="${OUT_FILE:-/tmp/metrics/busybox-${ARCH}.json}"
+
+# Custom GCC ships no binutils; -B steers it at Debian's cross binutils.
+# Without this, gcc calls the host x86 'as', which rejects '-little' (sh4).
+CC_RAW="$GCC_PREFIX/bin/${TARGET}-gcc"
+CC="$CC_RAW -B/usr/bin/${TARGET}-"
+SIZE="${SH4_SIZE:-/usr/bin/${TARGET}-size}"
 
 emit_zero() {
   local reason="$1"
@@ -34,11 +60,11 @@ emit_zero() {
   mkdir -p "$(dirname "$OUT_FILE")"
   cat > "$OUT_FILE" <<EOF
 [
-  {"name": "busybox_text_bytes",   "unit": "bytes",   "value": 0},
-  {"name": "busybox_rodata_bytes", "unit": "bytes",   "value": 0},
-  {"name": "busybox_total_bytes",  "unit": "bytes",   "value": 0},
-  {"name": "busybox_smoke_pass",   "unit": "applets", "value": 0},
-  {"name": "busybox_smoke_total",  "unit": "applets", "value": 10}
+  {"name": "busybox_text_bytes_${ARCH}",   "unit": "bytes",   "value": 0},
+  {"name": "busybox_rodata_bytes_${ARCH}", "unit": "bytes",   "value": 0},
+  {"name": "busybox_total_bytes_${ARCH}",  "unit": "bytes",   "value": 0},
+  {"name": "busybox_smoke_pass_${ARCH}",   "unit": "applets", "value": 0},
+  {"name": "busybox_smoke_total_${ARCH}",  "unit": "applets", "value": 10}
 ]
 EOF
 }
@@ -76,12 +102,13 @@ if [ ! -f Config.in ]; then
 fi
 
 echo "run-busybox: configuring..."
-export ARCH=sh
 # CROSS_COMPILE points to Debian's binutils (our custom GCC install ships
 # none — no as/ld/ar). CC is overridden to the candidate compiler.
-export CROSS_COMPILE="/usr/bin/sh4-linux-gnu-"
+# Pass ARCH=$BB_ARCH directly to make so we don't clobber our shell-level
+# $ARCH (sh4/arm/x86 shortname used for metric suffixing).
+export CROSS_COMPILE="/usr/bin/${TARGET}-"
 
-if ! make defconfig CC="$CC" >"$workdir/defconfig.out" 2>&1; then
+if ! make defconfig ARCH=$BB_ARCH CC="$CC" >"$workdir/defconfig.out" 2>&1; then
   echo "run-busybox: defconfig failed. Output:" >&2
   tail -30 "$workdir/defconfig.out" >&2
   emit_zero "defconfig failed"
@@ -94,23 +121,25 @@ if ! grep -q '^CONFIG_STATIC=y' .config; then
   echo "CONFIG_STATIC=y" >> .config
 fi
 
-# Disable applets that don't cross-compile cleanly for sh4:
-#   TC                — uses struct tc_cbq_wrropt absent from kernel headers
-#   FEATURE_TC        — same family
+# SH4-specific applet/feature disables:
+#   TC / FEATURE_TC   — uses struct tc_cbq_wrropt absent from sh4 kernel headers
 #   SHA1_HWACCEL      — references x86 SHA-NI intrinsics unconditionally
 #   SHA256_HWACCEL    — same
-#   FEATURE_USE_CNG_API — Windows-only; safety
-for opt in TC FEATURE_TC SHA1_HWACCEL SHA256_HWACCEL; do
-  sed -i "s|^CONFIG_${opt}=.*|# CONFIG_${opt} is not set|" .config
-done
+# arm and x86 use the upstream defaults (SHA-NI is x86-native; TC headers fine).
+if [ "$ARCH" = "sh4" ]; then
+  for opt in TC FEATURE_TC SHA1_HWACCEL SHA256_HWACCEL; do
+    sed -i "s|^CONFIG_${opt}=.*|# CONFIG_${opt} is not set|" .config
+  done
+fi
 
-make oldconfig CC="$CC" >/dev/null 2>&1 || true
+make oldconfig ARCH=$BB_ARCH CC="$CC" >/dev/null 2>&1 || true
 
 echo "run-busybox: building..."
 if ! make -j"$JOBS" \
+       ARCH=$BB_ARCH \
        CC="$CC" \
        CROSS_COMPILE="$CROSS_COMPILE" \
-       KBUILD_CFLAGS_EXTRA="-B/usr/bin/sh4-linux-gnu- --sysroot=$SYSROOT" \
+       KBUILD_CFLAGS_EXTRA="-B/usr/bin/${TARGET}- --sysroot=$SYSROOT" \
        2> "$workdir/build.err"; then
   echo "run-busybox: build failed. Tail of build.err:" >&2
   tail -30 "$workdir/build.err" >&2
@@ -174,11 +203,11 @@ echo "run-busybox: smoke $pass/10 PASS"
 mkdir -p "$(dirname "$OUT_FILE")"
 cat > "$OUT_FILE" <<EOF
 [
-  {"name": "busybox_text_bytes",   "unit": "bytes",   "value": $text},
-  {"name": "busybox_rodata_bytes", "unit": "bytes",   "value": $rodata},
-  {"name": "busybox_total_bytes",  "unit": "bytes",   "value": $total},
-  {"name": "busybox_smoke_pass",   "unit": "applets", "value": $pass},
-  {"name": "busybox_smoke_total",  "unit": "applets", "value": 10}
+  {"name": "busybox_text_bytes_${ARCH}",   "unit": "bytes",   "value": $text},
+  {"name": "busybox_rodata_bytes_${ARCH}", "unit": "bytes",   "value": $rodata},
+  {"name": "busybox_total_bytes_${ARCH}",  "unit": "bytes",   "value": $total},
+  {"name": "busybox_smoke_pass_${ARCH}",   "unit": "applets", "value": $pass},
+  {"name": "busybox_smoke_total_${ARCH}",  "unit": "applets", "value": 10}
 ]
 EOF
 
