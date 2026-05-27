@@ -254,3 +254,79 @@ jobs:
 
       - name: Deploy to Pages
         uses: actions/deploy-pages@v4
+
+  build-arm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    container:
+      image: ghcr.io/mountain-reverie/gcc-sh-base:latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read tested commit
+        id: meta
+        run: echo "commit=$(jq -r .commit state/last-tested.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore ccache (arm)
+        uses: actions/cache@v5
+        with:
+          path: /tmp/.ccache
+          key: ccache-arm-${{ steps.meta.outputs.commit }}
+          restore-keys: |
+            ccache-arm-
+
+      - name: Restore GCC source clone (shared across targets)
+        uses: actions/cache@v5
+        with:
+          path: /tmp/gcc-src
+          key: gcc-src-${{ steps.meta.outputs.commit }}
+          restore-keys: |
+            gcc-src-
+
+      - name: Build arm GCC
+        run: scripts/build-gcc.sh "${{ steps.meta.outputs.commit }}" arm-linux-gnueabihf
+
+      - name: Upload arm install artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcc-install-arm
+          path: /tmp/gcc-install-arm
+          retention-days: 7
+
+  build-x86:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    container:
+      image: ghcr.io/mountain-reverie/gcc-sh-base:latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read tested commit
+        id: meta
+        run: echo "commit=$(jq -r .commit state/last-tested.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore ccache (x86)
+        uses: actions/cache@v5
+        with:
+          path: /tmp/.ccache
+          key: ccache-x86-${{ steps.meta.outputs.commit }}
+          restore-keys: |
+            ccache-x86-
+
+      - name: Restore GCC source clone (shared across targets)
+        uses: actions/cache@v5
+        with:
+          path: /tmp/gcc-src
+          key: gcc-src-${{ steps.meta.outputs.commit }}
+          restore-keys: |
+            gcc-src-
+
+      - name: Build x86 GCC
+        run: scripts/build-gcc.sh "${{ steps.meta.outputs.commit }}" i686-linux-gnu
+
+      - name: Upload x86 install artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcc-install-x86
+          path: /tmp/gcc-install-x86
+          retention-days: 7
