@@ -8,7 +8,10 @@
 <body>
   <header>
     <h1>gcc-sh-monitor</h1>
-    <p>Continuous testing of GCC's SuperH (sh4) backend.</p>
+    <p class="lede">
+      Continuous testing of GCC's SuperH backend &mdash; correctness, code size,
+      and cross-architecture comparison on every upstream commit.
+    </p>
     <p>
       <img alt="dejagnu status" src="badge/dejagnu.svg">
       <img alt="csibe size (-Os)" src="badge/csibe.svg">
@@ -20,46 +23,112 @@
   </header>
 
   <main>
-    <h2>Dejagnu trends</h2>
-    <p>
-      Interactive trend charts:
-      <a href="benchmark/">benchmark/</a>.
-    </p>
-
-    <h2>Currently failing tests</h2>
-    <p id="fail-summary" class="muted">Loading…</p>
-    <div id="fail-section">
-      <h3>FAIL <span id="fail-count" class="muted"></span></h3>
-      <ul id="fail-list" class="tests"></ul>
-    </div>
-    <div id="unresolved-section">
-      <h3>UNRESOLVED <span id="unresolved-count" class="muted"></span></h3>
-      <ul id="unresolved-list" class="tests"></ul>
-    </div>
-    <details id="stale-section">
-      <summary>Known stale (informational) <span id="stale-count" class="muted"></span></summary>
-      <p class="muted">
-        These tests fail dejagnu's scan-assembler exact-pattern checks but the
-        actual emitted code is equivalent or better — the tests' patterns
-        haven't kept up with GCC's evolution. See
-        <code>state/dejagnu-known-stale.json</code> for per-test rationale.
+    <section>
+      <h2>What's measured</h2>
+      <p>
+        Each ci-full run rebuilds GCC HEAD as a cross-toolchain for
+        <strong>sh4-linux-gnu</strong>, <strong>arm-linux-gnueabihf</strong>,
+        and <strong>i686-linux-gnu</strong>, then runs the suites below.
+        Multi-arch metrics surface SH4-specific issues vs general GCC behaviour:
+        if all three arches change, it's a generic regression; if only sh4
+        moves, it's an SH backend issue.
       </p>
-      <h3>FAIL (stale) <span id="fail-stale-count" class="muted"></span></h3>
-      <ul id="fail-stale-list" class="tests"></ul>
-      <h3>UNRESOLVED (stale) <span id="unresolved-stale-count" class="muted"></span></h3>
-      <ul id="unresolved-stale-list" class="tests"></ul>
-    </details>
 
-    <h2>LRA differential</h2>
-    <p>
-      Detail: <a href="lra/">lra/</a>. Differential compile + run of a
-      curated corpus against Debian's pre-LRA reference compiler.
-    </p>
+      <h3>Correctness <span class="muted">(sh4 only)</span></h3>
+      <ul>
+        <li>
+          <strong>dejagnu</strong> &mdash; GCC's own <code>sh.exp</code>
+          testsuite run under qemu-sh4-static via a custom board file. See the
+          <a href="#failures">failing tests panel</a> below.
+        </li>
+        <li>
+          <strong>LRA differential</strong> &mdash; a curated corpus of
+          LRA-sensitive cases, compiled by both trunk GCC and Debian's
+          pre-LRA GCC 14.2; cases where trunk does <em>worse</em> are surfaced
+          as regressions. Detail: <a href="lra/">/lra/</a>.
+        </li>
+      </ul>
 
-    <p>
-      Raw per-run sum files are uploaded as workflow artefacts on
-      <a href="https://github.com/mountain-reverie/gcc-sh-monitor/actions/workflows/ci-full.yml">the ci-full runs page</a>.
-    </p>
+      <h3>Code size <span class="muted">(sh4 / arm / x86)</span></h3>
+      <ul>
+        <li>
+          <strong>CSiBE</strong> &mdash; 16 real-world C subprojects (bzip2,
+          jpeg, libpng, zlib, flex, &hellip;). Sum of
+          <code>.text + .rodata + .data</code> per project at <code>-Os</code>
+          and <code>-O2</code>.
+        </li>
+        <li>
+          <strong>CoreMark 1.0</strong> &mdash; EEMBC benchmark, built with
+          published-score flags. Tracks <code>.text</code> and total
+          binary size.
+        </li>
+        <li>
+          <strong>BusyBox (glibc-static)</strong> &mdash; defconfig built
+          against Debian's glibc, static-linked. 10-applet smoke under qemu.
+        </li>
+        <li>
+          <strong>BusyBox+musl</strong> &mdash; same defconfig, but linked
+          against our-built musl. Libc-equalised comparison &mdash;
+          isolates source codegen from libc tuning differences.
+          (Alpine Linux ships this configuration.)
+        </li>
+        <li>
+          <strong>musl libc.so</strong> &mdash; musl built from source per
+          arch, <code>.text</code> of the shared library measured. Static
+          hello-world smoke validates the build actually links and runs.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Trend charts</h2>
+      <p>
+        <a href="benchmark/">All metrics over time</a> &mdash; multi-arch
+        metrics render as 3-line charts (sh4 blue / arm green / x86 orange).
+        <a href="lra/">LRA differential table</a> &mdash; per-case outcomes.
+        <a href="benchmark/benchmark-data.json">Raw data</a> as JSON.
+      </p>
+    </section>
+
+    <section id="failures">
+      <h2>Currently failing tests <span class="muted">(sh4 dejagnu)</span></h2>
+      <p id="fail-summary" class="muted">Loading&hellip;</p>
+      <div id="fail-section">
+        <h3>FAIL <span id="fail-count" class="muted"></span></h3>
+        <ul id="fail-list" class="tests"></ul>
+      </div>
+      <div id="unresolved-section">
+        <h3>UNRESOLVED <span id="unresolved-count" class="muted"></span></h3>
+        <ul id="unresolved-list" class="tests"></ul>
+      </div>
+      <details id="stale-section">
+        <summary>Known stale <span id="stale-count" class="muted"></span></summary>
+        <p class="muted">
+          These tests fail dejagnu's scan-assembler exact-pattern checks
+          but the actual emitted code is equivalent or better &mdash; the
+          tests' patterns haven't kept up with GCC's evolution. See
+          <code>state/dejagnu-known-stale.json</code> for per-test rationale.
+        </p>
+        <h3>FAIL (stale) <span id="fail-stale-count" class="muted"></span></h3>
+        <ul id="fail-stale-list" class="tests"></ul>
+        <h3>UNRESOLVED (stale) <span id="unresolved-stale-count" class="muted"></span></h3>
+        <ul id="unresolved-stale-list" class="tests"></ul>
+      </details>
+    </section>
+
+    <section>
+      <h2>About</h2>
+      <p>
+        Per-run dejagnu sum files and gcc.log artefacts uploaded to the
+        <a href="https://github.com/mountain-reverie/gcc-sh-monitor/actions/workflows/ci-full.yml">ci-full runs page</a>
+        (30-day retention).
+        Baselines pinned in
+        <a href="https://github.com/mountain-reverie/gcc-sh-monitor/blob/main/state/baseline.json"><code>state/baseline.json</code></a>;
+        advanced manually so trend deltas are interpretable.
+        See the repo <a href="https://github.com/mountain-reverie/gcc-sh-monitor">README</a>
+        for architecture details.
+      </p>
+    </section>
   </main>
 
   <script>
