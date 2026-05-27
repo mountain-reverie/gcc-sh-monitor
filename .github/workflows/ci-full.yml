@@ -82,11 +82,11 @@ jobs:
           mkdir -p metrics
           python3 scripts/merge-metrics.py \
             /tmp/metrics/dejagnu.json \
-            /tmp/metrics/csibe.json \
-            /tmp/metrics/coremark.json \
+            /tmp/metrics/csibe-sh4.json \
+            /tmp/metrics/coremark-sh4.json \
             /tmp/metrics/lra.json \
-            /tmp/metrics/busybox.json \
-            /tmp/metrics/musl.json \
+            /tmp/metrics/busybox-sh4.json \
+            /tmp/metrics/musl-sh4.json \
             > metrics/all.json
           echo "Total metric entries: $(jq length metrics/all.json)"
 
@@ -110,7 +110,7 @@ jobs:
           retention-days: 1
 
   publish:
-    needs: build-and-test
+    needs: [build-and-test, bench-multi]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -122,6 +122,12 @@ jobs:
         with:
           name: metrics
           path: metrics
+
+      - name: Fetch multi-arch metrics
+        uses: actions/download-artifact@v4
+        with:
+          name: metrics-multi
+          path: metrics-multi
 
       - name: Fetch dejagnu sum file
         uses: actions/download-artifact@v4
@@ -168,11 +174,28 @@ jobs:
           fi
           cp metrics/lra-results.json html/lra/lra-results.json
 
+      - name: Migrate historical sh4-only metric names
+        run: |
+          if [ -f html/benchmark/benchmark-data.json ]; then
+            python3 scripts/migrate-benchmark-data.py html/benchmark/benchmark-data.json
+            echo "Migration applied."
+          else
+            echo "No prior data; migration skipped."
+          fi
+
+      - name: Merge sh4 + multi-arch metrics
+        run: |
+          python3 scripts/merge-metrics.py \
+            metrics/all.json \
+            metrics-multi/all-multi.json \
+            > metrics/combined.json
+          echo "Combined entries: $(jq length metrics/combined.json)"
+
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
           tool: customSmallerIsBetter
-          output-file-path: metrics/all.json
+          output-file-path: metrics/combined.json
           benchmark-data-dir-path: html/benchmark
           external-data-json-path: html/benchmark/benchmark-data.json
           github-token: ${{ secrets.DEPENDABOT_RECREATE_PAT }}
@@ -199,14 +222,14 @@ jobs:
             -o html/badge/dejagnu.svg
 
           # csibe badge — total -Os bytes converted to KB for readability.
-          CSIBE=$(jq '[.[] | select(.name=="csibe_total_os_bytes")][0].value' metrics/all.json)
+          CSIBE=$(jq '[.[] | select(.name=="csibe_total_os_bytes_sh4")][0].value' metrics/all.json)
           [[ "$CSIBE" =~ ^[0-9]+$ ]] || { echo "::error::csibe_total_os_bytes missing or non-numeric (got: $CSIBE)"; exit 1; }
           CSIBE_KB=$((CSIBE / 1024))
           curl -fsSL "https://img.shields.io/badge/csibe--Os-${CSIBE_KB}%20KB-blue" \
             -o html/badge/csibe.svg
 
           # coremark badge — .text section size in bytes.
-          COREMARK=$(jq '[.[] | select(.name=="coremark_text_bytes")][0].value' metrics/all.json)
+          COREMARK=$(jq '[.[] | select(.name=="coremark_text_bytes_sh4")][0].value' metrics/all.json)
           [[ "$COREMARK" =~ ^[0-9]+$ ]] || { echo "::error::coremark_text_bytes missing or non-numeric (got: $COREMARK)"; exit 1; }
           curl -fsSL "https://img.shields.io/badge/coremark%20.text-${COREMARK}%20bytes-blue" \
             -o html/badge/coremark.svg
@@ -221,9 +244,9 @@ jobs:
             -o html/badge/lra.svg
 
           # busybox badge — .text in KB plus smoke (P/10), coloured by smoke pass
-          BBT=$(jq '[.[] | select(.name=="busybox_text_bytes")][0].value' metrics/all.json)
+          BBT=$(jq '[.[] | select(.name=="busybox_text_bytes_sh4")][0].value' metrics/all.json)
           [[ "$BBT" =~ ^[0-9]+$ ]] || { echo "::error::busybox_text_bytes missing or non-numeric (got: $BBT)"; exit 1; }
-          BBP=$(jq '[.[] | select(.name=="busybox_smoke_pass")][0].value' metrics/all.json)
+          BBP=$(jq '[.[] | select(.name=="busybox_smoke_pass_sh4")][0].value' metrics/all.json)
           [[ "$BBP" =~ ^[0-9]+$ ]] || { echo "::error::busybox_smoke_pass missing or non-numeric (got: $BBP)"; exit 1; }
           BBT_KB=$((BBT / 1024))
           BB_COLOR="green"
@@ -233,9 +256,9 @@ jobs:
             -o html/badge/busybox.svg
 
           # musl badge — libc.so .text in KB, coloured by smoke
-          MLT=$(jq '[.[] | select(.name=="musl_libc_text_bytes")][0].value' metrics/all.json)
+          MLT=$(jq '[.[] | select(.name=="musl_libc_text_bytes_sh4")][0].value' metrics/all.json)
           [[ "$MLT" =~ ^[0-9]+$ ]] || { echo "::error::musl_libc_text_bytes missing or non-numeric (got: $MLT)"; exit 1; }
-          MLS=$(jq '[.[] | select(.name=="musl_smoke_pass")][0].value' metrics/all.json)
+          MLS=$(jq '[.[] | select(.name=="musl_smoke_pass_sh4")][0].value' metrics/all.json)
           [[ "$MLS" =~ ^[0-9]+$ ]] || { echo "::error::musl_smoke_pass missing or non-numeric (got: $MLS)"; exit 1; }
           MLT_KB=$((MLT / 1024))
           ML_COLOR="green"
@@ -329,4 +352,79 @@ jobs:
         with:
           name: gcc-install-x86
           path: /tmp/gcc-install-x86
+          retention-days: 7
+
+  bench-multi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/mountain-reverie/gcc-sh-base:latest
+    needs: [build-arm, build-x86]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read tested commit
+        id: meta
+        run: echo "commit=$(jq -r .commit state/last-tested.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Download arm install
+        uses: actions/download-artifact@v4
+        with:
+          name: gcc-install-arm
+          path: /tmp/gcc-install-arm
+
+      - name: Download x86 install
+        uses: actions/download-artifact@v4
+        with:
+          name: gcc-install-x86
+          path: /tmp/gcc-install-x86
+
+      - name: Restore executable bits on downloaded installs
+        # Artifact download via actions/download-artifact@v4 can drop +x bits
+        # on regular files. Restore so the GCC binaries can be invoked.
+        run: |
+          find /tmp/gcc-install-arm/bin /tmp/gcc-install-arm/libexec \
+               /tmp/gcc-install-x86/bin /tmp/gcc-install-x86/libexec \
+               -type f -exec chmod +x {} \; 2>/dev/null || true
+
+      - name: Run all size benchmarks for arm
+        env:
+          TARGET: arm-linux-gnueabihf
+          GCC_PREFIX: /tmp/gcc-install-arm
+        run: |
+          scripts/run-csibe.sh
+          scripts/run-coremark-size.sh
+          scripts/run-busybox.sh
+          scripts/run-musl.sh
+
+      - name: Run all size benchmarks for x86
+        env:
+          TARGET: i686-linux-gnu
+          GCC_PREFIX: /tmp/gcc-install-x86
+        run: |
+          scripts/run-csibe.sh
+          scripts/run-coremark-size.sh
+          scripts/run-busybox.sh
+          scripts/run-musl.sh
+
+      - name: Merge multi-arch metrics
+        run: |
+          mkdir -p metrics-multi
+          python3 scripts/merge-metrics.py \
+            /tmp/metrics/csibe-arm.json \
+            /tmp/metrics/coremark-arm.json \
+            /tmp/metrics/busybox-arm.json \
+            /tmp/metrics/musl-arm.json \
+            /tmp/metrics/csibe-x86.json \
+            /tmp/metrics/coremark-x86.json \
+            /tmp/metrics/busybox-x86.json \
+            /tmp/metrics/musl-x86.json \
+            > metrics-multi/all-multi.json
+          echo "Multi-arch entries: $(jq length metrics-multi/all-multi.json)"
+
+      - name: Upload multi-arch metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-multi
+          path: metrics-multi
           retention-days: 7
