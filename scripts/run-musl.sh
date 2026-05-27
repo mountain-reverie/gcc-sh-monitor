@@ -1,28 +1,53 @@
 #!/usr/bin/env bash
-# Cross-compile musl with the sh4-linux-gnu cross compiler, smoke-test
-# the resulting libc by static-linking a hello-world and running under
-# qemu-sh4-static, and measure libc.so section sizes. Emits
-# /tmp/metrics/musl.json with four entries.
+# Cross-compile musl with a TARGET-tuple cross compiler, smoke-test the
+# resulting libc by static-linking a hello-world and running under the
+# matching qemu-user-static binary, and measure libc.so section sizes.
+# Emits /tmp/metrics/musl-${ARCH}.json with four entries.
 #
 # Build failure → all metrics emit as 0 (script returns 0 so CI proceeds).
 # Build OK + smoke fails → size ships, smoke_pass=0.
 #
 # Environment:
+#   TARGET         GNU triple: sh4-linux-gnu (default) | arm-linux-gnueabihf
+#                  | i686-linux-gnu
 #   GCC_PREFIX     install dir of the candidate GCC (default: /tmp/gcc-install)
 #   MUSL_DIR       vendored source (default: $PWD/musl)
-#   OUT_FILE       output JSON (default: /tmp/metrics/musl.json)
+#   OUT_FILE       output JSON (default: /tmp/metrics/musl-${ARCH}.json)
 #   JOBS           parallel build jobs (default: $(nproc))
 
 set -euo pipefail
 
 GCC_PREFIX="${GCC_PREFIX:-/tmp/gcc-install}"
 MUSL_DIR="${MUSL_DIR:-$PWD/musl}"
-OUT_FILE="${OUT_FILE:-/tmp/metrics/musl.json}"
 JOBS="${JOBS:-$(nproc)}"
 
-CC="$GCC_PREFIX/bin/sh4-linux-gnu-gcc"
-SIZE="${SH4_SIZE:-/usr/bin/sh4-linux-gnu-size}"
-QEMU="qemu-sh4-static"
+TARGET="${TARGET:-sh4-linux-gnu}"
+case "$TARGET" in
+  sh4-linux-gnu)
+    ARCH=sh4
+    QEMU=qemu-sh4-static
+    MUSL_TARGET=sh4-linux-musleabi
+    ;;
+  arm-linux-gnueabihf)
+    ARCH=arm
+    QEMU=qemu-arm-static
+    MUSL_TARGET=arm-linux-musleabihf
+    ;;
+  i686-linux-gnu)
+    ARCH=x86
+    QEMU=qemu-i386-static
+    MUSL_TARGET=i486-linux-musl
+    ;;
+  *)
+    echo "run-musl: unsupported TARGET=$TARGET" >&2
+    exit 2
+    ;;
+esac
+OUT_FILE="${OUT_FILE:-/tmp/metrics/musl-${ARCH}.json}"
+
+CC_RAW="$GCC_PREFIX/bin/${TARGET}-gcc"
+CC="$CC_RAW -B/usr/bin/${TARGET}-"
+SIZE="${SH4_SIZE:-/usr/bin/${TARGET}-size}"
 
 emit_zero() {
   local reason="$1"
@@ -30,15 +55,15 @@ emit_zero() {
   mkdir -p "$(dirname "$OUT_FILE")"
   cat > "$OUT_FILE" <<EOF
 [
-  {"name": "musl_libc_text_bytes",  "unit": "bytes", "value": 0},
-  {"name": "musl_libc_total_bytes", "unit": "bytes", "value": 0},
-  {"name": "musl_smoke_pass",       "unit": "runs",  "value": 0},
-  {"name": "musl_smoke_total",      "unit": "runs",  "value": 1}
+  {"name": "musl_libc_text_bytes_${ARCH}",  "unit": "bytes", "value": 0},
+  {"name": "musl_libc_total_bytes_${ARCH}", "unit": "bytes", "value": 0},
+  {"name": "musl_smoke_pass_${ARCH}",       "unit": "runs",  "value": 0},
+  {"name": "musl_smoke_total_${ARCH}",      "unit": "runs",  "value": 1}
 ]
 EOF
 }
 
-if [ ! -x "$CC" ];       then emit_zero "missing $CC";       exit 0; fi
+if [ ! -x "$CC_RAW" ];   then emit_zero "missing $CC_RAW";   exit 0; fi
 if [ ! -d "$MUSL_DIR" ]; then emit_zero "missing $MUSL_DIR"; exit 0; fi
 if [ ! -x "$SIZE" ];     then emit_zero "missing $SIZE";     exit 0; fi
 if ! command -v "$QEMU" >/dev/null; then emit_zero "missing $QEMU"; exit 0; fi
@@ -55,10 +80,10 @@ echo "run-musl: configuring..."
 # CC: candidate GCC, configured to find Debian's cross binutils via -B.
 # CROSS_COMPILE: prefix for ar/ranlib/strip that musl invokes directly.
 if ! ./configure \
-       --target=sh4-linux-musleabi \
+       --target="$MUSL_TARGET" \
        --prefix="$install_dir" \
-       CC="$CC -B/usr/bin/sh4-linux-gnu-" \
-       CROSS_COMPILE=/usr/bin/sh4-linux-gnu- \
+       CC="$CC" \
+       CROSS_COMPILE=/usr/bin/${TARGET}- \
        >"$workdir/configure.out" 2>&1; then
   echo "run-musl: configure failed. Output:" >&2
   tail -30 "$workdir/configure.out" >&2
@@ -122,8 +147,8 @@ int main(void) {
 EOF
 
 smoke_pass=0
-if "$CC" \
-      -B/usr/bin/sh4-linux-gnu- \
+if $CC_RAW \
+      -B/usr/bin/${TARGET}- \
       -nostdinc -isystem "$install_dir/include" \
       -nostdlib -static \
       "$install_dir/lib/crt1.o" \
@@ -154,10 +179,10 @@ fi
 mkdir -p "$(dirname "$OUT_FILE")"
 cat > "$OUT_FILE" <<EOF
 [
-  {"name": "musl_libc_text_bytes",  "unit": "bytes", "value": $text},
-  {"name": "musl_libc_total_bytes", "unit": "bytes", "value": $total},
-  {"name": "musl_smoke_pass",       "unit": "runs",  "value": $smoke_pass},
-  {"name": "musl_smoke_total",      "unit": "runs",  "value": 1}
+  {"name": "musl_libc_text_bytes_${ARCH}",  "unit": "bytes", "value": $text},
+  {"name": "musl_libc_total_bytes_${ARCH}", "unit": "bytes", "value": $total},
+  {"name": "musl_smoke_pass_${ARCH}",       "unit": "runs",  "value": $smoke_pass},
+  {"name": "musl_smoke_total_${ARCH}",      "unit": "runs",  "value": 1}
 ]
 EOF
 
