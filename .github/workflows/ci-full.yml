@@ -74,6 +74,9 @@ jobs:
       - name: Run BusyBox build + smoke + size
         run: scripts/run-busybox.sh
 
+      - name: Run BusyBox+musl build + smoke + size
+        run: scripts/run-busybox-musl.sh
+
       - name: Run musl build + smoke + size
         run: scripts/run-musl.sh
 
@@ -86,6 +89,7 @@ jobs:
             /tmp/metrics/coremark-sh4.json \
             /tmp/metrics/lra.json \
             /tmp/metrics/busybox-sh4.json \
+            /tmp/metrics/busybox-musl-sh4.json \
             /tmp/metrics/musl-sh4.json \
             > metrics/all.json
           echo "Total metric entries: $(jq length metrics/all.json)"
@@ -395,6 +399,7 @@ jobs:
           scripts/run-csibe.sh
           scripts/run-coremark-size.sh
           scripts/run-busybox.sh
+          scripts/run-busybox-musl.sh
           scripts/run-musl.sh
 
       - name: Run all size benchmarks for x86
@@ -405,6 +410,7 @@ jobs:
           scripts/run-csibe.sh
           scripts/run-coremark-size.sh
           scripts/run-busybox.sh
+          scripts/run-busybox-musl.sh
           scripts/run-musl.sh
 
       - name: Merge multi-arch metrics
@@ -414,10 +420,12 @@ jobs:
             /tmp/metrics/csibe-arm.json \
             /tmp/metrics/coremark-arm.json \
             /tmp/metrics/busybox-arm.json \
+            /tmp/metrics/busybox-musl-arm.json \
             /tmp/metrics/musl-arm.json \
             /tmp/metrics/csibe-x86.json \
             /tmp/metrics/coremark-x86.json \
             /tmp/metrics/busybox-x86.json \
+            /tmp/metrics/busybox-musl-x86.json \
             /tmp/metrics/musl-x86.json \
             > metrics-multi/all-multi.json
           echo "Multi-arch entries: $(jq length metrics-multi/all-multi.json)"
