@@ -1,23 +1,32 @@
 #!/usr/bin/env bash
-# Build CoreMark with the sh4-linux-gnu cross compiler at the published-
+# Build CoreMark with the $TARGET cross compiler at the published-
 # score flags (-O2 -funroll-loops) and measure the resulting binary's
-# section sizes. Emits /tmp/metrics/coremark.json.
+# section sizes. Emits /tmp/metrics/coremark-${ARCH}.json. Metric names
+# are suffixed with the short arch name (sh4/arm/x86).
 #
 # Environment:
+#   TARGET         GNU triple (default: sh4-linux-gnu; also arm-linux-gnueabihf, i686-linux-gnu)
 #   GCC_PREFIX     install dir (default: /tmp/gcc-install)
 #   COREMARK_DIR   vendored corpus (default: $PWD/coremark)
-#   OUT_FILE       output JSON (default: /tmp/metrics/coremark.json)
+#   OUT_FILE       output JSON (default: /tmp/metrics/coremark-${ARCH}.json)
 #   PORT_DIR       CoreMark port subdir (default: simple)
 
 set -euo pipefail
 
 GCC_PREFIX="${GCC_PREFIX:-/tmp/gcc-install}"
 COREMARK_DIR="${COREMARK_DIR:-$PWD/coremark}"
-OUT_FILE="${OUT_FILE:-/tmp/metrics/coremark.json}"
 PORT_DIR="${PORT_DIR:-simple}"
+TARGET="${TARGET:-sh4-linux-gnu}"
+case "$TARGET" in
+  sh4-linux-gnu)       ARCH=sh4 ;;
+  arm-linux-gnueabihf) ARCH=arm ;;
+  i686-linux-gnu)      ARCH=x86 ;;
+  *) echo "run-coremark-size: unsupported TARGET=$TARGET" >&2; exit 2 ;;
+esac
+OUT_FILE="${OUT_FILE:-/tmp/metrics/coremark-${ARCH}.json}"
 
-if [ ! -x "$GCC_PREFIX/bin/sh4-linux-gnu-gcc" ]; then
-  echo "run-coremark-size: missing $GCC_PREFIX/bin/sh4-linux-gnu-gcc" >&2
+if [ ! -x "$GCC_PREFIX/bin/${TARGET}-gcc" ]; then
+  echo "run-coremark-size: missing $GCC_PREFIX/bin/${TARGET}-gcc" >&2
   exit 1
 fi
 if [ ! -d "$COREMARK_DIR" ]; then
@@ -26,7 +35,7 @@ if [ ! -d "$COREMARK_DIR" ]; then
 fi
 
 # Debian's cross binutils' size tool (our built GCC ships no binutils).
-SIZE="${SH4_SIZE:-/usr/bin/sh4-linux-gnu-size}"
+SIZE="${SH4_SIZE:-/usr/bin/${TARGET}-size}"
 
 mkdir -p "$(dirname "$OUT_FILE")"
 
@@ -42,10 +51,10 @@ if [ ! -d "$workdir/$PORT_DIR" ]; then
 fi
 
 cd "$workdir"
-CC="$GCC_PREFIX/bin/sh4-linux-gnu-gcc"
-# -B/usr/bin/sh4-linux-gnu- uses Debian's cross binutils (our build ships none).
+CC="$GCC_PREFIX/bin/${TARGET}-gcc"
+# -B/usr/bin/${TARGET}- uses Debian's cross binutils (our build ships none).
 # -static avoids dynamic-linker issues when ld looks for /lib/ld-linux.so.2.
-XCFLAGS="-O2 -funroll-loops -B/usr/bin/sh4-linux-gnu- -static"
+XCFLAGS="-O2 -funroll-loops -B/usr/bin/${TARGET}- -static"
 
 make PORT_DIR="$PORT_DIR" CC="$CC" XCFLAGS="$XCFLAGS" compile
 
@@ -82,9 +91,9 @@ total=$(stat -c %s "$binary")
 
 cat > "$OUT_FILE" <<EOF
 [
-  {"name": "coremark_text_bytes",   "unit": "bytes", "value": $text},
-  {"name": "coremark_rodata_bytes", "unit": "bytes", "value": $rodata},
-  {"name": "coremark_total_bytes",  "unit": "bytes", "value": $total}
+  {"name": "coremark_text_bytes_${ARCH}",   "unit": "bytes", "value": $text},
+  {"name": "coremark_rodata_bytes_${ARCH}", "unit": "bytes", "value": $rodata},
+  {"name": "coremark_total_bytes_${ARCH}",  "unit": "bytes", "value": $total}
 ]
 EOF
 
