@@ -20,6 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         g++-sh4-linux-gnu \
         binutils-sh4-linux-gnu \
         libc6-dev-sh4-cross \
+        crossbuild-essential-armhf \
+        crossbuild-essential-i386 \
         qemu-user-static \
         binfmt-support \
     && rm -rf /var/lib/apt/lists/*
@@ -35,8 +37,10 @@ RUN ln -sfn . /usr/sh4-linux-gnu/usr
 # the script to use bare names so ld resolves them via -L search paths.
 RUN sed -i 's|/usr/sh4-linux-gnu/lib/||g' /usr/sh4-linux-gnu/lib/libc.so
 
-# Sanity: cross gcc and qemu must be on PATH; sysroot layout looks right.
+# Sanity: all three cross gccs and qemu must be on PATH; sh4 sysroot layout looks right.
 RUN sh4-linux-gnu-gcc --version \
+ && arm-linux-gnueabihf-gcc --version \
+ && i686-linux-gnu-gcc --version \
  && qemu-sh4-static --version \
  && test -f /usr/sh4-linux-gnu/usr/include/stdio.h \
  && test -f /usr/sh4-linux-gnu/usr/lib/crt1.o
