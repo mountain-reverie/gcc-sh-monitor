@@ -1,0 +1,26 @@
+{
+  "lastUpdate": 1779730352889,
+  "repoUrl": "https://github.com/mountain-reverie/gcc-sh-monitor",
+  "entries": {
+    "Benchmark": [
+      {
+        "commit": {"id": "deadbeef", "author": {"username": "test"}},
+        "date": 1779730352889,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {"name": "dejagnu_fail_count",      "value": 36,      "unit": "tests"},
+          {"name": "lra_diverged_count",      "value": 0,       "unit": "tuples"},
+          {"name": "csibe_total_os_bytes",    "value": 1538591, "unit": "bytes"},
+          {"name": "csibe_bzip2_os_bytes",    "value": 12345,   "unit": "bytes"},
+          {"name": "coremark_text_bytes",     "value": 307884,  "unit": "bytes"},
+          {"name": "busybox_text_bytes",      "value": 1486948, "unit": "bytes"},
+          {"name": "busybox_smoke_pass",      "value": 10,      "unit": "applets"},
+          {"name": "musl_libc_text_bytes",    "value": 359804,  "unit": "bytes"},
+          {"name": "musl_smoke_pass",         "value": 1,       "unit": "runs"},
+          {"name": "csibe_total_o2_bytes_sh4","value": 1809424, "unit": "bytes"},
+          {"name": "coremark_text_bytes_arm", "value": 200000,  "unit": "bytes"}
+        ]
+      }
+    ]
+  }
+}
