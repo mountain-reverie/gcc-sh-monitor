@@ -27,6 +27,16 @@
     const data = window.BENCHMARK_DATA || { entries: {} };
     const main = document.getElementById("charts");
 
+    const ARCH_RE = /_(sh4|arm|x86)$/;
+    const ARCH_COLORS = { sh4: "#3b82f6", arm: "#10b981", x86: "#f59e0b" };
+    const ARCH_ORDER = ["sh4", "arm", "x86"];
+
+    function splitArch(name) {
+      const m = name.match(ARCH_RE);
+      if (m) return { base: name.slice(0, -m[0].length), arch: m[1] };
+      return { base: name, arch: null };
+    }
+
     // Collect (timestamp, value) series per metric name across all entries.
     const byMetric = {};
     for (const suite of Object.values(data.entries || {})) {
@@ -48,34 +58,64 @@
       main.innerHTML = "<p>No data yet — waiting for the first ci-full run.</p>";
     }
 
+    // Group metrics by base name, splitting out arch suffixes into series.
+    const byBase = {};
     for (const [name, points] of Object.entries(byMetric)) {
       points.sort((a, b) => a.x - b.x);
+      const { base, arch } = splitArch(name);
+      if (!byBase[base]) byBase[base] = {};
+      if (arch === null) {
+        byBase[base]._ = points;
+      } else {
+        byBase[base][arch] = points;
+      }
+    }
+
+    for (const base of Object.keys(byBase).sort()) {
+      const archMap = byBase[base];
+
       const section = document.createElement("section");
       const h2 = document.createElement("h2");
-      h2.textContent = name;
+      h2.textContent = base;
       section.appendChild(h2);
       const canvas = document.createElement("canvas");
       canvas.height = 80;
       section.appendChild(canvas);
       main.appendChild(section);
 
+      let datasets;
+      let unit;
+      if (archMap._) {
+        unit = archMap._[0].unit;
+        datasets = [{
+          label: base,
+          data: archMap._,
+          borderColor: "#0066cc",
+          backgroundColor: "#0066cc22",
+          tension: 0.1,
+          pointRadius: 4,
+        }];
+      } else {
+        const archesPresent = ARCH_ORDER.filter((a) => archMap[a]);
+        unit = archMap[archesPresent[0]][0].unit;
+        datasets = archesPresent.map((a) => ({
+          label: a,
+          data: archMap[a],
+          borderColor: ARCH_COLORS[a],
+          backgroundColor: ARCH_COLORS[a] + "22",
+          tension: 0.1,
+          pointRadius: 4,
+        }));
+      }
+
       new Chart(canvas, {
         type: "line",
-        data: {
-          datasets: [{
-            label: name,
-            data: points,
-            borderColor: "#0066cc",
-            backgroundColor: "#0066cc22",
-            tension: 0.1,
-            pointRadius: 4,
-          }],
-        },
+        data: { datasets },
         options: {
           parsing: false,
           scales: {
             x: { type: "time", time: { unit: "day" } },
-            y: { beginAtZero: true, title: { display: true, text: points[0].unit } },
+            y: { beginAtZero: true, title: { display: true, text: unit } },
           },
           plugins: {
             tooltip: {
@@ -84,10 +124,13 @@
                   const d = new Date(items[0].raw.x);
                   return d.toISOString().slice(0, 19) + "Z";
                 },
-                label: (item) => `${item.raw.y} ${item.raw.unit} (${item.raw.commit})`,
+                label: (item) => {
+                  const prefix = item.dataset.label ? `${item.dataset.label}: ` : "";
+                  return `${prefix}${item.raw.y} ${item.raw.unit} (${item.raw.commit})`;
+                },
               },
             },
-            legend: { display: false },
+            legend: { display: datasets.length > 1 },
           },
         },
       });
