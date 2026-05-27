@@ -6,33 +6,35 @@
     "dejagnu_unresolved_count": 1,
     "lra_diverged_count": 0,
     "lra_current_ice_count": 0,
-
     "csibe_total_os_bytes_sh4": 1538719,
     "csibe_total_o2_bytes_sh4": 1809412,
     "csibe_total_os_bytes_arm": 1678720,
     "csibe_total_o2_bytes_arm": 1967818,
     "csibe_total_os_bytes_x86": 1562158,
     "csibe_total_o2_bytes_x86": 2049751,
-
     "coremark_text_bytes_sh4": 307884,
     "coremark_total_bytes_sh4": 700076,
     "coremark_text_bytes_arm": 248920,
     "coremark_total_bytes_arm": 529424,
     "coremark_text_bytes_x86": 444642,
     "coremark_total_bytes_x86": 907848,
-
     "busybox_text_bytes_sh4": 1487060,
     "busybox_smoke_pass_sh4": 10,
     "busybox_text_bytes_arm": 1399236,
     "busybox_smoke_pass_arm": 10,
     "busybox_text_bytes_x86": 1720432,
     "busybox_smoke_pass_x86": 10,
-
     "musl_libc_text_bytes_sh4": 359816,
     "musl_smoke_pass_sh4": 1,
     "musl_libc_text_bytes_arm": 365116,
     "musl_smoke_pass_arm": 1,
     "musl_libc_text_bytes_x86": 397802,
-    "musl_smoke_pass_x86": 1
+    "musl_smoke_pass_x86": 1,
+    "busybox_musl_text_bytes_sh4": 922494,
+    "busybox_musl_smoke_pass_sh4": 10,
+    "busybox_musl_text_bytes_arm": 1009664,
+    "busybox_musl_smoke_pass_arm": 10,
+    "busybox_musl_text_bytes_x86": 880514,
+    "busybox_musl_smoke_pass_x86": 10
   }
 }
