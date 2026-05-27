@@ -121,16 +121,16 @@ if ! grep -q '^CONFIG_STATIC=y' .config; then
   echo "CONFIG_STATIC=y" >> .config
 fi
 
-# SH4-specific applet/feature disables:
-#   TC / FEATURE_TC   — uses struct tc_cbq_wrropt absent from sh4 kernel headers
-#   SHA1_HWACCEL      — references x86 SHA-NI intrinsics unconditionally
-#   SHA256_HWACCEL    — same
-# arm and x86 use the upstream defaults (SHA-NI is x86-native; TC headers fine).
-if [ "$ARCH" = "sh4" ]; then
-  for opt in TC FEATURE_TC SHA1_HWACCEL SHA256_HWACCEL; do
-    sed -i "s|^CONFIG_${opt}=.*|# CONFIG_${opt} is not set|" .config
-  done
-fi
+# Cross-build applet/feature disables (apply to all arches):
+#   TC / FEATURE_TC   — uses struct tc_cbq_wrropt absent from the kernel
+#                       headers shipped in Debian's cross sysroots (all arches).
+#   SHA1_HWACCEL      — references x86 SHA-NI intrinsics unconditionally; the
+#                       code doesn't compile for sh4 or arm, and our i686 target
+#                       lacks SHA-NI by default. Safer to disable everywhere.
+#   SHA256_HWACCEL    — same.
+for opt in TC FEATURE_TC SHA1_HWACCEL SHA256_HWACCEL; do
+  sed -i "s|^CONFIG_${opt}=.*|# CONFIG_${opt} is not set|" .config
+done
 
 make oldconfig ARCH=$BB_ARCH CC="$CC" >/dev/null 2>&1 || true
 
