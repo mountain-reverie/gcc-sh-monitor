@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>gcc-sh-monitor — dejagnu trends</title>
+  <title>gcc-sh-monitor — correctness &amp; size trends</title>
   <link rel="stylesheet" href="../style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -10,8 +10,10 @@
 </head>
 <body>
   <header>
-    <h1><a href="../">gcc-sh-monitor</a> · dejagnu trends</h1>
-    <p>One chart per metric, one point per upstream commit tested.</p>
+    <h1><a href="../">gcc-sh-monitor</a> · correctness &amp; size trends</h1>
+    <p>Dejagnu correctness plus code-size benchmarks (CSiBE, CoreMark,
+    BusyBox, musl) across sh4/arm/x86. One chart per metric, one point per
+    upstream commit tested.</p>
   </header>
 
   <main id="charts"></main>
