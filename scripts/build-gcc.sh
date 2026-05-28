@@ -117,3 +117,40 @@ if ! file "$GCC_BUILD_DIR/smoke" | grep -q "$EXPECTED_ELF_MAGIC"; then
   exit 1
 fi
 echo "build-gcc: smoke PASS for $TARGET"
+
+# Sidecar FDPIC libgcc (sh4 only). The main toolchain is non-multilib, so it
+# ships only a non-FDPIC libgcc. The BusyBox+musl fdpic lane needs an
+# fdpic-compiled libgcc.a; build one here by forcing -mfdpic onto the target
+# libgcc and copy the archive to a known sidecar path. Non-fatal: if it fails,
+# the fdpic lane simply emits zero metrics.
+if [ "$TARGET" = "sh4-linux-gnu" ]; then
+  echo "build-gcc: building sidecar FDPIC libgcc..."
+  FDPIC_BUILD="${GCC_BUILD_DIR}-fdpic"
+  FDPIC_LIBGCC_DST="$GCC_PREFIX/lib/sh-fdpic/libgcc.a"
+  mkdir -p "$FDPIC_BUILD"
+  find "$FDPIC_BUILD" -mindepth 1 -delete
+  git config --global --add safe.directory "$FDPIC_BUILD" || true
+  if ( cd "$FDPIC_BUILD"
+       "$GCC_SRC_DIR/configure" \
+         --target="$TARGET" \
+         --enable-languages=c \
+         --disable-multilib --disable-bootstrap --disable-shared \
+         --enable-checking=release \
+         --with-sysroot="$SYSROOT" \
+         --disable-libsanitizer --disable-werror \
+         --prefix="$FDPIC_BUILD/inst" \
+         CFLAGS_FOR_TARGET="-O2 -mfdpic" \
+       && make -j"$JOBS" all-gcc all-target-libgcc \
+       && make install-gcc install-target-libgcc ); then
+    src=$(find "$FDPIC_BUILD/inst" -path '*sh4-linux-gnu*' -name libgcc.a | head -1)
+    if [ -n "$src" ]; then
+      mkdir -p "$(dirname "$FDPIC_LIBGCC_DST")"
+      cp "$src" "$FDPIC_LIBGCC_DST"
+      echo "build-gcc: sidecar FDPIC libgcc -> $FDPIC_LIBGCC_DST ($(stat -c %s "$FDPIC_LIBGCC_DST") bytes)"
+    else
+      echo "build-gcc: WARNING sidecar libgcc.a not found; fdpic lane will be zero" >&2
+    fi
+  else
+    echo "build-gcc: WARNING sidecar FDPIC libgcc build failed; fdpic lane will be zero" >&2
+  fi
+fi

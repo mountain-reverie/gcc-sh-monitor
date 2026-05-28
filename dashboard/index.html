@@ -73,6 +73,13 @@
           (Alpine Linux ships this configuration.)
         </li>
         <li>
+          <strong>BusyBox+musl FDPIC</strong> <span class="muted">(sh4 only)</span>
+          &mdash; the same build under the ELF FDPIC ABI (musl + libgcc compiled
+          <code>-mfdpic</code>). glibc has no SH-FDPIC ABI, so this is musl-only.
+          Serves as a position-independent reference ceiling for the shared
+          constant pool work.
+        </li>
+        <li>
           <strong>musl libc.so</strong> &mdash; musl built from source per
           arch, <code>.text</code> of the shared library measured. Static
           hello-world smoke validates the build actually links and runs.

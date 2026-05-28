@@ -77,6 +77,9 @@ jobs:
       - name: Run BusyBox+musl build + smoke + size
         run: scripts/run-busybox-musl.sh
 
+      - name: Run BusyBox+musl FDPIC build + smoke + size
+        run: ABI=fdpic scripts/run-busybox-musl.sh
+
       - name: Run musl build + smoke + size
         run: scripts/run-musl.sh
 
@@ -90,6 +93,7 @@ jobs:
             /tmp/metrics/lra.json \
             /tmp/metrics/busybox-sh4.json \
             /tmp/metrics/busybox-musl-sh4.json \
+            /tmp/metrics/busybox-musl-fdpic-sh4.json \
             /tmp/metrics/musl-sh4.json \
             > metrics/all.json
           echo "Total metric entries: $(jq length metrics/all.json)"

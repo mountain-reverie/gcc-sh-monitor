@@ -47,7 +47,20 @@ case "$TARGET" in
     exit 2
     ;;
 esac
-OUT_FILE="${OUT_FILE:-/tmp/metrics/busybox-musl-${ARCH}.json}"
+# Optional ABI variant. ABI=fdpic builds the ELF FDPIC variant (sh4 only):
+# musl and BusyBox are compiled with -mfdpic and linked against a sidecar
+# FDPIC libgcc.a (the main toolchain is non-multilib so has no fdpic libgcc).
+ABI="${ABI:-}"
+ABI_CFLAGS=""
+METRIC="busybox_musl"
+FILE_TAG="busybox-musl"
+if [ "$ABI" = "fdpic" ]; then
+  ABI_CFLAGS="-mfdpic"
+  METRIC="busybox_musl_fdpic"
+  FILE_TAG="busybox-musl-fdpic"
+fi
+OUT_FILE="${OUT_FILE:-/tmp/metrics/${FILE_TAG}-${ARCH}.json}"
+FDPIC_LIBGCC="${FDPIC_LIBGCC:-$GCC_PREFIX/lib/sh-fdpic/libgcc.a}"
 
 CC_RAW="$GCC_PREFIX/bin/${TARGET}-gcc"
 SIZE="${SH4_SIZE:-/usr/bin/${TARGET}-size}"
@@ -58,16 +71,23 @@ emit_zero() {
   mkdir -p "$(dirname "$OUT_FILE")"
   cat > "$OUT_FILE" <<EOF
 [
-  {"name": "busybox_musl_text_bytes_${ARCH}",   "unit": "bytes",   "value": 0},
-  {"name": "busybox_musl_rodata_bytes_${ARCH}", "unit": "bytes",   "value": 0},
-  {"name": "busybox_musl_total_bytes_${ARCH}",  "unit": "bytes",   "value": 0},
-  {"name": "busybox_musl_smoke_pass_${ARCH}",   "unit": "applets", "value": 0},
-  {"name": "busybox_musl_smoke_total_${ARCH}",  "unit": "applets", "value": 10}
+  {"name": "${METRIC}_text_bytes_${ARCH}",   "unit": "bytes",   "value": 0},
+  {"name": "${METRIC}_rodata_bytes_${ARCH}", "unit": "bytes",   "value": 0},
+  {"name": "${METRIC}_total_bytes_${ARCH}",  "unit": "bytes",   "value": 0},
+  {"name": "${METRIC}_smoke_pass_${ARCH}",   "unit": "applets", "value": 0},
+  {"name": "${METRIC}_smoke_total_${ARCH}",  "unit": "applets", "value": 10}
 ]
 EOF
 }
 
+# FDPIC is SH-specific; other arches have no fdpic ABI to measure.
+if [ "$ABI" = "fdpic" ] && [ "$ARCH" != "sh4" ]; then
+  emit_zero "fdpic unsupported on $ARCH"; exit 0
+fi
 if [ ! -x "$CC_RAW" ];    then emit_zero "missing $CC_RAW";    exit 0; fi
+if [ "$ABI" = "fdpic" ] && [ ! -f "$FDPIC_LIBGCC" ]; then
+  emit_zero "missing fdpic libgcc $FDPIC_LIBGCC"; exit 0
+fi
 if [ ! -d "$MUSL_DIR" ];   then emit_zero "missing $MUSL_DIR";   exit 0; fi
 if [ ! -d "$BUSYBOX_DIR" ];then emit_zero "missing $BUSYBOX_DIR";exit 0; fi
 if [ ! -x "$SIZE" ];       then emit_zero "missing $SIZE";       exit 0; fi
@@ -87,7 +107,7 @@ cd "$musl_src"
 if ! ./configure \
        --target="$MUSL_TARGET" \
        --prefix="$musl_install" \
-       CC="$CC_RAW -B/usr/bin/${TARGET}-" \
+       CC="$CC_RAW -B/usr/bin/${TARGET}- $ABI_CFLAGS" \
        CROSS_COMPILE=/usr/bin/${TARGET}- \
        >"$workdir/musl-configure.out" 2>&1; then
   echo "run-busybox-musl: musl configure failed. Output:" >&2
@@ -113,7 +133,11 @@ fi
 echo "run-busybox-musl: musl installed at $musl_install"
 
 # Phase 2: wrapper-CC script
+# In fdpic mode the main toolchain's -lgcc would resolve to the non-fdpic
+# libgcc (mixing FDPIC/non-FDPIC objects fails to link), so link the sidecar
+# fdpic libgcc.a by absolute path instead.
 wrapper="$workdir/cc-musl"
+if [ "$ABI" = "fdpic" ]; then LIBGCC_LINK="$FDPIC_LIBGCC"; else LIBGCC_LINK="-lgcc"; fi
 cat > "$wrapper" <<EOF
 #!/bin/sh
 # Wrapper CC: invoke real gcc with musl as libc.
@@ -129,18 +153,18 @@ for a in "\$@"; do
 done
 if \$linking; then
   exec "$CC_RAW" \\
-    -B/usr/bin/${TARGET}- \\
+    -B/usr/bin/${TARGET}- $ABI_CFLAGS \\
     -nostdinc \\
     -isystem "$musl_install/include" \\
     -isystem /usr/${TARGET}/include \\
     -nostdlib -static \\
     "$musl_install/lib/crt1.o" "$musl_install/lib/crti.o" \\
     "\$@" \\
-    -L"$musl_install/lib" -lc -lgcc \\
+    -L"$musl_install/lib" -lc $LIBGCC_LINK \\
     "$musl_install/lib/crtn.o"
 else
   exec "$CC_RAW" \\
-    -B/usr/bin/${TARGET}- \\
+    -B/usr/bin/${TARGET}- $ABI_CFLAGS \\
     -nostdinc \\
     -isystem "$musl_install/include" \\
     -isystem /usr/${TARGET}/include \\
@@ -258,11 +282,11 @@ echo "run-busybox-musl: smoke $pass/10 PASS"
 mkdir -p "$(dirname "$OUT_FILE")"
 cat > "$OUT_FILE" <<EOF
 [
-  {"name": "busybox_musl_text_bytes_${ARCH}",   "unit": "bytes",   "value": $text},
-  {"name": "busybox_musl_rodata_bytes_${ARCH}", "unit": "bytes",   "value": $rodata},
-  {"name": "busybox_musl_total_bytes_${ARCH}",  "unit": "bytes",   "value": $total},
-  {"name": "busybox_musl_smoke_pass_${ARCH}",   "unit": "applets", "value": $pass},
-  {"name": "busybox_musl_smoke_total_${ARCH}",  "unit": "applets", "value": 10}
+  {"name": "${METRIC}_text_bytes_${ARCH}",   "unit": "bytes",   "value": $text},
+  {"name": "${METRIC}_rodata_bytes_${ARCH}", "unit": "bytes",   "value": $rodata},
+  {"name": "${METRIC}_total_bytes_${ARCH}",  "unit": "bytes",   "value": $total},
+  {"name": "${METRIC}_smoke_pass_${ARCH}",   "unit": "applets", "value": $pass},
+  {"name": "${METRIC}_smoke_total_${ARCH}",  "unit": "applets", "value": 10}
 ]
 EOF
 
