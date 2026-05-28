@@ -52,12 +52,18 @@ esac
 # FDPIC libgcc.a (the main toolchain is non-multilib so has no fdpic libgcc).
 ABI="${ABI:-}"
 ABI_CFLAGS=""
+MUSL_EXTRA_CONFIG=""
 METRIC="busybox_musl"
 FILE_TAG="busybox-musl"
 if [ "$ABI" = "fdpic" ]; then
   ABI_CFLAGS="-mfdpic"
   METRIC="busybox_musl_fdpic"
   FILE_TAG="busybox-musl-fdpic"
+  # musl's shared libc.so link uses the compiler's default -lgcc, which on the
+  # non-multilib main toolchain is the NON-fdpic libgcc → "attempt to mix FDPIC
+  # and non-FDPIC objects". We only need the static libc.a (BusyBox is static),
+  # so skip the shared lib entirely.
+  MUSL_EXTRA_CONFIG="--disable-shared"
 fi
 OUT_FILE="${OUT_FILE:-/tmp/metrics/${FILE_TAG}-${ARCH}.json}"
 FDPIC_LIBGCC="${FDPIC_LIBGCC:-$GCC_PREFIX/lib/sh-fdpic/libgcc.a}"
@@ -107,6 +113,7 @@ cd "$musl_src"
 if ! ./configure \
        --target="$MUSL_TARGET" \
        --prefix="$musl_install" \
+       $MUSL_EXTRA_CONFIG \
        CC="$CC_RAW -B/usr/bin/${TARGET}- $ABI_CFLAGS" \
        CROSS_COMPILE=/usr/bin/${TARGET}- \
        >"$workdir/musl-configure.out" 2>&1; then
