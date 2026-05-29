@@ -7,6 +7,21 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
   <script src="data.js"></script>
+  <style>
+    /* This page is chart-dense — use the full browser width and lay the
+       charts out in a responsive grid (as many columns as fit). */
+    body { max-width: none; padding-inline: 2rem; }
+    #charts {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(26rem, 1fr));
+      gap: 1rem 1.5rem;
+      align-items: start;
+    }
+    #charts section { margin: 0; min-width: 0; }   /* min-width:0 lets charts shrink in grid cells */
+    #charts section h2 { margin: 0 0 0.3rem; font-size: 1rem; word-break: break-word; }
+    .chart-box { position: relative; height: 16rem; }
+    @media (max-width: 28rem) { body { padding-inline: 1rem; } }
+  </style>
 </head>
 <body>
   <header>
@@ -80,9 +95,11 @@
       const h2 = document.createElement("h2");
       h2.textContent = base;
       section.appendChild(h2);
+      const box = document.createElement("div");
+      box.className = "chart-box";
       const canvas = document.createElement("canvas");
-      canvas.height = 80;
-      section.appendChild(canvas);
+      box.appendChild(canvas);
+      section.appendChild(box);
       main.appendChild(section);
 
       let datasets;
@@ -115,6 +132,8 @@
         data: { datasets },
         options: {
           parsing: false,
+          responsive: true,
+          maintainAspectRatio: false,
           scales: {
             x: { type: "time", time: { unit: "day" } },
             y: { beginAtZero: true, title: { display: true, text: unit } },
