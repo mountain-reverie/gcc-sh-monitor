@@ -1,4 +1,5 @@
 """Tests for migrate-benchmark-data.py."""
+import importlib.util
 import json
 import shutil
 import subprocess
@@ -9,6 +10,10 @@ from pathlib import Path
 HERE = Path(__file__).parent
 FIXTURE = HERE.parent / "tests" / "fixtures" / "benchmark-data-unmigrated.json"
 SCRIPT = HERE / "migrate-benchmark-data.py"
+
+_spec = importlib.util.spec_from_file_location("migrate", SCRIPT)
+migrate = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(migrate)
 
 
 def migrate_to_tmp() -> Path:
@@ -78,6 +83,23 @@ def test_idempotent():
     subprocess.run([sys.executable, str(SCRIPT), str(once)], check=True)
     twice_names = sorted(load_names(once))
     assert once_names == twice_names
+
+
+def test_riscv32_not_suffixed():
+    # riscv32 is a real arch suffix; must NOT get a spurious _sh4.
+    assert migrate.maybe_rename("busybox_musl_text_bytes_riscv32") \
+        == "busybox_musl_text_bytes_riscv32"
+
+
+def test_riscv32_sh4_repaired():
+    # The earlier bug produced ..._riscv32_sh4; migrate must repair it.
+    assert migrate.maybe_rename("busybox_musl_text_bytes_riscv32_sh4") \
+        == "busybox_musl_text_bytes_riscv32"
+
+
+def test_riscv32_repair_idempotent():
+    once = migrate.maybe_rename("busybox_musl_smoke_pass_riscv32_sh4")
+    assert migrate.maybe_rename(once) == "busybox_musl_smoke_pass_riscv32"
 
 
 def test_missing_file_aborts_nonzero():

@@ -15,10 +15,15 @@ import sys
 from pathlib import Path
 
 SUFFIX_PREFIXES = ("csibe_", "coremark_", "busybox_", "musl_")
-KNOWN_ARCH_SUFFIXES = ("_sh4", "_arm", "_x86")
+KNOWN_ARCH_SUFFIXES = ("_sh4", "_arm", "_x86", "_riscv32")
 
 
 def maybe_rename(name: str) -> str:
+    # Repair: riscv32 was once missing from KNOWN_ARCH_SUFFIXES, so
+    # busybox_*_riscv32 metrics wrongly received a second _sh4 suffix
+    # (..._riscv32_sh4). Strip it back. Idempotent once names are clean.
+    if name.endswith("_riscv32_sh4"):
+        return name[: -len("_sh4")]
     if not name.startswith(SUFFIX_PREFIXES):
         return name
     if name.endswith(KNOWN_ARCH_SUFFIXES):
