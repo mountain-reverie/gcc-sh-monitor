@@ -17,8 +17,6 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 GCC_PREFIX="${GCC_PREFIX:-/tmp/gcc-install}"
 MUSL_DIR="${MUSL_DIR:-$PWD/musl}"
 BUSYBOX_DIR="${BUSYBOX_DIR:-$PWD/busybox}"
@@ -91,9 +89,7 @@ emit_zero() {
   {"name": "${METRIC}_rodata_bytes_${ARCH}", "unit": "bytes",   "value": 0},
   {"name": "${METRIC}_total_bytes_${ARCH}",  "unit": "bytes",   "value": 0},
   {"name": "${METRIC}_smoke_pass_${ARCH}",   "unit": "applets", "value": 0},
-  {"name": "${METRIC}_smoke_total_${ARCH}",  "unit": "applets", "value": 10},
-  {"name": "${METRIC}_got_load_sites_${ARCH}",  "unit": "sites", "value": 0},
-  {"name": "${METRIC}_got_store_sites_${ARCH}", "unit": "sites", "value": 0}
+  {"name": "${METRIC}_smoke_total_${ARCH}",  "unit": "applets", "value": 10}
 ]
 EOF
 }
@@ -273,22 +269,6 @@ done < <("$SIZE" --format=sysv busybox | tail -n +3 | head -n -2)
 total=$(stat -c %s busybox)
 echo "run-busybox-musl: text=$text rodata=$rodata total=$total"
 
-# Pseudo-LEA probe: count the real FDPIC GOT data-load/store idiom
-# (`mov.l @(rI,r12),rD` / `mov.l rD,@(rI,r12)`) that a proposed
-# `mov.l @(disp:8,R12),rN` fold-load would target. Best-effort, never fatal.
-# Meaningful only for fdpic (non-PIC has no GOT pointer in r12 -> stays 0).
-OBJDUMP="${SH4_OBJDUMP:-/usr/bin/${TARGET}-objdump}"
-got_load=0; got_store=0
-if [ "$ABI" = "fdpic" ] && [ -x "$OBJDUMP" ] && [ -f "$SCRIPT_DIR/scan-lea-foldable.py" ]; then
-  if "$OBJDUMP" -d busybox 2>/dev/null \
-       | python3 "$SCRIPT_DIR/scan-lea-foldable.py" --config "$ARCH" - \
-       > "$workdir/lea.json" 2>/dev/null; then
-    got_load=$(python3 -c 'import json,sys;print(next((d["value"] for d in json.load(open(sys.argv[1])) if d["name"].startswith("got_load_insns_")),0))' "$workdir/lea.json" 2>/dev/null || echo 0)
-    got_store=$(python3 -c 'import json,sys;print(next((d["value"] for d in json.load(open(sys.argv[1])) if d["name"].startswith("got_store_insns_")),0))' "$workdir/lea.json" 2>/dev/null || echo 0)
-    echo "run-busybox-musl: fdpic GOT fold-load sites=$got_load fold-store sites=$got_store"
-  fi
-fi
-
 cat > /tmp/input <<'EOF'
 hello sh4
 world
@@ -328,9 +308,7 @@ cat > "$OUT_FILE" <<EOF
   {"name": "${METRIC}_rodata_bytes_${ARCH}", "unit": "bytes",   "value": $rodata},
   {"name": "${METRIC}_total_bytes_${ARCH}",  "unit": "bytes",   "value": $total},
   {"name": "${METRIC}_smoke_pass_${ARCH}",   "unit": "applets", "value": $pass},
-  {"name": "${METRIC}_smoke_total_${ARCH}",  "unit": "applets", "value": 10},
-  {"name": "${METRIC}_got_load_sites_${ARCH}",  "unit": "sites", "value": $got_load},
-  {"name": "${METRIC}_got_store_sites_${ARCH}", "unit": "sites", "value": $got_store}
+  {"name": "${METRIC}_smoke_total_${ARCH}",  "unit": "applets", "value": 10}
 ]
 EOF
 
