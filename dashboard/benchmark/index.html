@@ -44,9 +44,9 @@
     const data = window.BENCHMARK_DATA || { entries: {} };
     const main = document.getElementById("charts");
 
-    const ARCH_RE = /_(sh4|arm|x86)$/;
-    const ARCH_COLORS = { sh4: "#3b82f6", arm: "#10b981", x86: "#f59e0b" };
-    const ARCH_ORDER = ["sh4", "arm", "x86"];
+    const ARCH_RE = /_(sh4|arm|x86|riscv32)$/;
+    const ARCH_COLORS = { sh4: "#3b82f6", arm: "#10b981", x86: "#f59e0b", riscv32: "#a855f7" };
+    const ARCH_ORDER = ["sh4", "arm", "x86", "riscv32"];
 
     function splitArch(name) {
       const m = name.match(ARCH_RE);

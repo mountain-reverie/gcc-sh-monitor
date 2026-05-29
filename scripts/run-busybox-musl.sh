@@ -17,6 +17,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 GCC_PREFIX="${GCC_PREFIX:-/tmp/gcc-install}"
 MUSL_DIR="${MUSL_DIR:-$PWD/musl}"
 BUSYBOX_DIR="${BUSYBOX_DIR:-$PWD/busybox}"
@@ -41,6 +43,14 @@ case "$TARGET" in
     QEMU=qemu-i386-static
     BB_ARCH=x86
     MUSL_TARGET=i486-linux-musl
+    ;;
+  riscv64-linux-gnu)
+    # The toolchain triple is riscv64-linux-gnu but it defaults to rv32gc/ilp32d
+    # (see build-gcc.sh), so this is the 32-bit RISC-V lane.
+    ARCH=riscv32
+    QEMU=qemu-riscv32-static
+    BB_ARCH=riscv
+    MUSL_TARGET=riscv32-linux-musl
     ;;
   *)
     echo "run-busybox-musl: unsupported TARGET=$TARGET" >&2
@@ -81,7 +91,9 @@ emit_zero() {
   {"name": "${METRIC}_rodata_bytes_${ARCH}", "unit": "bytes",   "value": 0},
   {"name": "${METRIC}_total_bytes_${ARCH}",  "unit": "bytes",   "value": 0},
   {"name": "${METRIC}_smoke_pass_${ARCH}",   "unit": "applets", "value": 0},
-  {"name": "${METRIC}_smoke_total_${ARCH}",  "unit": "applets", "value": 10}
+  {"name": "${METRIC}_smoke_total_${ARCH}",  "unit": "applets", "value": 10},
+  {"name": "${METRIC}_got_load_sites_${ARCH}",  "unit": "sites", "value": 0},
+  {"name": "${METRIC}_got_store_sites_${ARCH}", "unit": "sites", "value": 0}
 ]
 EOF
 }
@@ -217,7 +229,14 @@ if ! grep -q '^CONFIG_STATIC=y' .config; then
   echo "CONFIG_STATIC=y" >> .config
 fi
 
-for opt in TC FEATURE_TC SHA1_HWACCEL SHA256_HWACCEL; do
+DISABLE_OPTS="TC FEATURE_TC SHA1_HWACCEL SHA256_HWACCEL"
+# rv32 is a time64-only arch with no legacy SYS_settimeofday, which BusyBox's
+# hwclock applet calls as a raw syscall. Drop hwclock on rv32 only (one small
+# applet; keeps the other arches' configs unchanged).
+if [ "$ARCH" = riscv32 ]; then
+  DISABLE_OPTS="$DISABLE_OPTS HWCLOCK"
+fi
+for opt in $DISABLE_OPTS; do
   sed -i "s|^CONFIG_${opt}=.*|# CONFIG_${opt} is not set|" .config
 done
 
@@ -253,6 +272,22 @@ done < <("$SIZE" --format=sysv busybox | tail -n +3 | head -n -2)
 
 total=$(stat -c %s busybox)
 echo "run-busybox-musl: text=$text rodata=$rodata total=$total"
+
+# Pseudo-LEA probe: count the real FDPIC GOT data-load/store idiom
+# (`mov.l @(rI,r12),rD` / `mov.l rD,@(rI,r12)`) that a proposed
+# `mov.l @(disp:8,R12),rN` fold-load would target. Best-effort, never fatal.
+# Meaningful only for fdpic (non-PIC has no GOT pointer in r12 -> stays 0).
+OBJDUMP="${SH4_OBJDUMP:-/usr/bin/${TARGET}-objdump}"
+got_load=0; got_store=0
+if [ "$ABI" = "fdpic" ] && [ -x "$OBJDUMP" ] && [ -f "$SCRIPT_DIR/scan-lea-foldable.py" ]; then
+  if "$OBJDUMP" -d busybox 2>/dev/null \
+       | python3 "$SCRIPT_DIR/scan-lea-foldable.py" --config "$ARCH" - \
+       > "$workdir/lea.json" 2>/dev/null; then
+    got_load=$(python3 -c 'import json,sys;print(next((d["value"] for d in json.load(open(sys.argv[1])) if d["name"].startswith("got_load_insns_")),0))' "$workdir/lea.json" 2>/dev/null || echo 0)
+    got_store=$(python3 -c 'import json,sys;print(next((d["value"] for d in json.load(open(sys.argv[1])) if d["name"].startswith("got_store_insns_")),0))' "$workdir/lea.json" 2>/dev/null || echo 0)
+    echo "run-busybox-musl: fdpic GOT fold-load sites=$got_load fold-store sites=$got_store"
+  fi
+fi
 
 cat > /tmp/input <<'EOF'
 hello sh4
@@ -293,7 +328,9 @@ cat > "$OUT_FILE" <<EOF
   {"name": "${METRIC}_rodata_bytes_${ARCH}", "unit": "bytes",   "value": $rodata},
   {"name": "${METRIC}_total_bytes_${ARCH}",  "unit": "bytes",   "value": $total},
   {"name": "${METRIC}_smoke_pass_${ARCH}",   "unit": "applets", "value": $pass},
-  {"name": "${METRIC}_smoke_total_${ARCH}",  "unit": "applets", "value": 10}
+  {"name": "${METRIC}_smoke_total_${ARCH}",  "unit": "applets", "value": 10},
+  {"name": "${METRIC}_got_load_sites_${ARCH}",  "unit": "sites", "value": $got_load},
+  {"name": "${METRIC}_got_store_sites_${ARCH}", "unit": "sites", "value": $got_store}
 ]
 EOF
 

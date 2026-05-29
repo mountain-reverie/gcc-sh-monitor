@@ -45,11 +45,38 @@ case "$TARGET" in
     EXTRA_CONFIGURE=(--with-arch=i686 --with-tune=generic)
     EXPECTED_ELF_MAGIC="Intel i386"
     ;;
+  riscv64-linux-gnu)
+    # 32-bit RISC-V (rv32gc/ilp32d) on Debian's riscv64 binutils (which handle
+    # elf32-littleriscv). There is no rv32 glibc, so libgcc is built freestanding
+    # (--without-headers, no --with-sysroot); musl supplies headers at the
+    # BusyBox link stage. C only, no libatomic; smoke is compile-only since
+    # there's no libc to link at toolchain-build time.
+    SYSROOT="/usr/riscv64-linux-gnu"
+    GCC_BUILD_DIR="${GCC_BUILD_DIR:-/tmp/gcc-build-riscv32}"
+    GCC_PREFIX="${GCC_PREFIX:-/tmp/gcc-install-riscv32}"
+    EXTRA_CONFIGURE=(--with-arch=rv32gc --with-abi=ilp32d --without-headers \
+                     --disable-shared --disable-threads --disable-libssp \
+                     --disable-libquadmath)
+    EXPECTED_ELF_MAGIC="UCB RISC-V"
+    LANGS="c"
+    SMOKE_MODE="compile"
+    WITH_SYSROOT="no"
+    LIBATOMIC_MAKE=""
+    LIBATOMIC_INSTALL=""
+    ;;
   *)
     echo "build-gcc: unsupported TARGET=$TARGET" >&2
     exit 2
     ;;
 esac
+
+# Per-target build knobs (defaults for the glibc targets; rv32 overrides above).
+# Use ${v-default} (not :-) so an intentionally-empty value survives.
+LANGS="${LANGS:-c,c++}"
+SMOKE_MODE="${SMOKE_MODE:-link}"
+WITH_SYSROOT="${WITH_SYSROOT:-yes}"
+LIBATOMIC_MAKE="${LIBATOMIC_MAKE-all-target-libatomic}"
+LIBATOMIC_INSTALL="${LIBATOMIC_INSTALL-install-target-libatomic}"
 
 GCC_SRC_DIR="${GCC_SRC_DIR:-/tmp/gcc-src}"
 CCACHE_DIR="${CCACHE_DIR:-/tmp/.ccache}"
@@ -82,38 +109,48 @@ mkdir -p "$GCC_BUILD_DIR" "$GCC_PREFIX"
 find "$GCC_BUILD_DIR" "$GCC_PREFIX" -mindepth 1 -delete
 
 cd "$GCC_BUILD_DIR"
-"$GCC_SRC_DIR/configure" \
-  --target="$TARGET" \
-  --enable-languages=c,c++ \
-  --disable-multilib \
-  --disable-bootstrap \
-  --enable-checking=release \
-  --with-sysroot="$SYSROOT" \
-  --disable-libsanitizer \
-  --disable-werror \
-  --prefix="$GCC_PREFIX" \
-  "${EXTRA_CONFIGURE[@]}"
+CONFIGURE_ARGS=(
+  --target="$TARGET"
+  --enable-languages="$LANGS"
+  --disable-multilib
+  --disable-bootstrap
+  --enable-checking=release
+  --disable-libsanitizer
+  --disable-werror
+  --prefix="$GCC_PREFIX"
+)
+if [ "$WITH_SYSROOT" = yes ]; then
+  CONFIGURE_ARGS+=(--with-sysroot="$SYSROOT")
+fi
+CONFIGURE_ARGS+=("${EXTRA_CONFIGURE[@]}")
+"$GCC_SRC_DIR/configure" "${CONFIGURE_ARGS[@]}"
 
 # The SH backend's spec unconditionally injects -latomic_asneeded into the
 # link line, so libatomic must be present alongside libgcc — otherwise even
 # a trivial `int main(){}` fails to link. Other backends don't strictly
 # need it but it's cheap and harmless to build for all targets.
-make -j"$JOBS" all-gcc all-target-libgcc all-target-libatomic
-make install-gcc install-target-libgcc install-target-libatomic
+make -j"$JOBS" all-gcc all-target-libgcc $LIBATOMIC_MAKE
+make install-gcc install-target-libgcc $LIBATOMIC_INSTALL
 
 echo "build-gcc: $TARGET installed at $GCC_PREFIX"
 "$GCC_PREFIX/bin/${TARGET}-gcc" --version
 
-# Hello-world smoke: confirm the toolchain produces a valid ELF for the target.
+# Smoke: confirm the toolchain produces a valid ELF for the target. The rv32
+# toolchain has no libc at build time, so it compiles to an object instead of
+# linking a full executable.
 echo "int main(void){return 0;}" > "$GCC_BUILD_DIR/smoke.c"
-"$GCC_PREFIX/bin/${TARGET}-gcc" \
-  -B/usr/bin/${TARGET}- \
-  --sysroot="$SYSROOT" \
-  "$GCC_BUILD_DIR/smoke.c" \
-  -o "$GCC_BUILD_DIR/smoke"
-if ! file "$GCC_BUILD_DIR/smoke" | grep -q "$EXPECTED_ELF_MAGIC"; then
+if [ "$SMOKE_MODE" = compile ]; then
+  "$GCC_PREFIX/bin/${TARGET}-gcc" -B/usr/bin/${TARGET}- \
+    -c "$GCC_BUILD_DIR/smoke.c" -o "$GCC_BUILD_DIR/smoke.o"
+  SMOKE_ARTIFACT="$GCC_BUILD_DIR/smoke.o"
+else
+  "$GCC_PREFIX/bin/${TARGET}-gcc" -B/usr/bin/${TARGET}- \
+    --sysroot="$SYSROOT" "$GCC_BUILD_DIR/smoke.c" -o "$GCC_BUILD_DIR/smoke"
+  SMOKE_ARTIFACT="$GCC_BUILD_DIR/smoke"
+fi
+if ! file "$SMOKE_ARTIFACT" | grep -q "$EXPECTED_ELF_MAGIC"; then
   echo "build-gcc: smoke FAILED — expected '$EXPECTED_ELF_MAGIC' in:" >&2
-  file "$GCC_BUILD_DIR/smoke" >&2
+  file "$SMOKE_ARTIFACT" >&2
   exit 1
 fi
 echo "build-gcc: smoke PASS for $TARGET"

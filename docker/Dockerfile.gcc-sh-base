@@ -22,6 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libc6-dev-sh4-cross \
         crossbuild-essential-armhf \
         crossbuild-essential-i386 \
+        binutils-riscv64-linux-gnu \
+        libc6-dev-riscv64-cross \
         qemu-user-static \
         binfmt-support \
     && rm -rf /var/lib/apt/lists/*
@@ -31,7 +33,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # with usr/include and usr/lib. Bridge each with a symlink.
 RUN ln -sfn . /usr/sh4-linux-gnu/usr \
  && ln -sfn . /usr/arm-linux-gnueabihf/usr \
- && ln -sfn . /usr/i686-linux-gnu/usr
+ && ln -sfn . /usr/i686-linux-gnu/usr \
+ && ln -sfn . /usr/riscv64-linux-gnu/usr
 
 # The Debian-shipped libc.so linker scripts hardcode absolute /usr/<triple>/
 # paths. With --with-sysroot=/usr/<triple> the linker prefixes those again,
@@ -46,8 +49,11 @@ RUN sh4-linux-gnu-gcc --version \
  && arm-linux-gnueabihf-gcc --version \
  && i686-linux-gnu-gcc --version \
  && qemu-sh4-static --version \
+ && qemu-riscv32-static --version \
+ && riscv64-linux-gnu-as --version >/dev/null \
  && test -f /usr/sh4-linux-gnu/usr/include/stdio.h \
- && test -f /usr/sh4-linux-gnu/usr/lib/crt1.o
+ && test -f /usr/sh4-linux-gnu/usr/lib/crt1.o \
+ && test -d /usr/riscv64-linux-gnu/include/asm
 
 # Where vendored test suites will live in later increments.
 RUN mkdir -p /opt/test-suites

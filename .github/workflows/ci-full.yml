@@ -362,12 +362,54 @@ jobs:
           path: /tmp/gcc-install-x86
           retention-days: 7
 
+  build-riscv32:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    # Newer lane: a build hiccup here must not fail the whole multi-arch run.
+    continue-on-error: true
+    container:
+      image: ghcr.io/mountain-reverie/gcc-sh-base:latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read tested commit
+        id: meta
+        run: echo "commit=$(jq -r .commit state/last-tested.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore ccache (riscv32)
+        uses: actions/cache@v5
+        with:
+          path: /tmp/.ccache
+          key: ccache-riscv32-${{ steps.meta.outputs.commit }}
+          restore-keys: |
+            ccache-riscv32-
+
+      - name: Restore GCC source clone (shared across targets)
+        uses: actions/cache@v5
+        with:
+          path: /tmp/gcc-src
+          key: gcc-src-${{ steps.meta.outputs.commit }}
+          restore-keys: |
+            gcc-src-
+
+      # The triple is riscv64-linux-gnu but the toolchain defaults to
+      # rv32gc/ilp32d (32-bit RISC-V) — see build-gcc.sh.
+      - name: Build riscv32 GCC
+        run: scripts/build-gcc.sh "${{ steps.meta.outputs.commit }}" riscv64-linux-gnu
+
+      - name: Upload riscv32 install artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcc-install-riscv32
+          path: /tmp/gcc-install-riscv32
+          retention-days: 7
+
   bench-multi:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     container:
       image: ghcr.io/mountain-reverie/gcc-sh-base:latest
-    needs: [build-arm, build-x86]
+    needs: [build-arm, build-x86, build-riscv32]
     steps:
       - uses: actions/checkout@v5
 
@@ -387,12 +429,20 @@ jobs:
           name: gcc-install-x86
           path: /tmp/gcc-install-x86
 
+      - name: Download riscv32 install
+        uses: actions/download-artifact@v4
+        continue-on-error: true   # rv32 build may have been skipped/failed
+        with:
+          name: gcc-install-riscv32
+          path: /tmp/gcc-install-riscv32
+
       - name: Restore executable bits on downloaded installs
         # Artifact download via actions/download-artifact@v4 can drop +x bits
         # on regular files. Restore so the GCC binaries can be invoked.
         run: |
           find /tmp/gcc-install-arm/bin /tmp/gcc-install-arm/libexec \
                /tmp/gcc-install-x86/bin /tmp/gcc-install-x86/libexec \
+               /tmp/gcc-install-riscv32/bin /tmp/gcc-install-riscv32/libexec \
                -type f -exec chmod +x {} \; 2>/dev/null || true
 
       - name: Run all size benchmarks for arm
@@ -417,6 +467,15 @@ jobs:
           scripts/run-busybox-musl.sh
           scripts/run-musl.sh
 
+      # 32-bit RISC-V: musl-only (no rv32 glibc). BusyBox+musl size+smoke is the
+      # comparison lane; run-busybox-musl emits zero metrics if the rv32 install
+      # is missing, so this never breaks the merge.
+      - name: Run busybox-musl for riscv32
+        env:
+          TARGET: riscv64-linux-gnu
+          GCC_PREFIX: /tmp/gcc-install-riscv32
+        run: scripts/run-busybox-musl.sh
+
       - name: Merge multi-arch metrics
         run: |
           mkdir -p metrics-multi
@@ -431,6 +490,7 @@ jobs:
             /tmp/metrics/busybox-x86.json \
             /tmp/metrics/busybox-musl-x86.json \
             /tmp/metrics/musl-x86.json \
+            /tmp/metrics/busybox-musl-riscv32.json \
             > metrics-multi/all-multi.json
           echo "Multi-arch entries: $(jq length metrics-multi/all-multi.json)"
 
