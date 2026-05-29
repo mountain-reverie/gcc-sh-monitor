@@ -191,19 +191,6 @@ jobs:
             echo "No prior data; migration skipped."
           fi
 
-      # One-time cleanup: drop the accidentally-committed GOT-site metrics from
-      # the historical series. Safe to remove this step after one published run
-      # (the emitter is gone, so they won't reappear).
-      - name: Scrub stray got_*_sites metrics from history
-        run: |
-          f=html/benchmark/benchmark-data.json
-          if [ -f "$f" ]; then
-            jq '.entries |= map_values([ .[]
-                  | .benches |= map(select((.name | test("got_(load|store)_sites")) | not)) ])' \
-              "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-            echo "Scrubbed got_*_sites from $(jq '.entries | length' "$f") suite(s)."
-          fi
-
       - name: Merge sh4 + multi-arch metrics
         run: |
           python3 scripts/merge-metrics.py \
