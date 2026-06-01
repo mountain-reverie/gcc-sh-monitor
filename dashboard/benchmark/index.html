@@ -48,10 +48,40 @@
     const ARCH_COLORS = { sh4: "#3b82f6", arm: "#10b981", x86: "#f59e0b", riscv32: "#a855f7" };
     const ARCH_ORDER = ["sh4", "arm", "x86", "riscv32"];
 
+    // FDPIC (sh4-only) variants share one chart, keyed by LTO state rather than
+    // arch. The `_fdpic` guard in resolve() scopes this so the non-fdpic `_lto`
+    // charts stay arch-keyed and unchanged.
+    const FDPIC_VARIANTS = {
+      "fdpic":      { label: "fdpic",      color: "#3b82f6", order: 0 },
+      "fdpic +LTO": { label: "fdpic +LTO", color: "#f59e0b", order: 1 },
+    };
+
     function splitArch(name) {
       const m = name.match(ARCH_RE);
       if (m) return { base: name.slice(0, -m[0].length), arch: m[1] };
       return { base: name, arch: null };
+    }
+
+    // Resolve a metric name to its chart (chartBase) and the series within it.
+    //   Most metrics: one chart per base, one series per arch.
+    //   FDPIC: busybox_musl_fdpic[_lto]_* collapse to a single chart whose two
+    //   series are the LTO variants (fdpic vs fdpic +LTO) — arch is always sh4.
+    function resolve(name) {
+      const { base, arch } = splitArch(name);
+      if (base.includes("_fdpic")) {
+        const lto = base.includes("_fdpic_lto");
+        const chartBase = lto ? base.replace("_fdpic_lto", "_fdpic") : base;
+        const key = lto ? "fdpic +LTO" : "fdpic";
+        const v = FDPIC_VARIANTS[key];
+        return { chartBase, seriesKey: key, label: v.label, color: v.color, order: v.order };
+      }
+      if (arch === null) {
+        return { chartBase: base, seriesKey: "_", label: base, color: "#0066cc", order: 0 };
+      }
+      return {
+        chartBase: base, seriesKey: arch, label: arch,
+        color: ARCH_COLORS[arch], order: ARCH_ORDER.indexOf(arch),
+      };
     }
 
     // Collect (timestamp, value) series per metric name across all entries.
@@ -75,21 +105,18 @@
       main.innerHTML = "<p>No data yet — waiting for the first ci-full run.</p>";
     }
 
-    // Group metrics by base name, splitting out arch suffixes into series.
+    // Group metrics into charts, splitting arch suffixes (or, for FDPIC, the
+    // LTO variant) into the series that make up each chart.
     const byBase = {};
     for (const [name, points] of Object.entries(byMetric)) {
       points.sort((a, b) => a.x - b.x);
-      const { base, arch } = splitArch(name);
-      if (!byBase[base]) byBase[base] = {};
-      if (arch === null) {
-        byBase[base]._ = points;
-      } else {
-        byBase[base][arch] = points;
-      }
+      const { chartBase, seriesKey, label, color, order } = resolve(name);
+      if (!byBase[chartBase]) byBase[chartBase] = {};
+      byBase[chartBase][seriesKey] = { points, label, color, order };
     }
 
     for (const base of Object.keys(byBase).sort()) {
-      const archMap = byBase[base];
+      const series = Object.values(byBase[base]).sort((a, b) => a.order - b.order);
 
       const section = document.createElement("section");
       const h2 = document.createElement("h2");
@@ -102,30 +129,15 @@
       section.appendChild(box);
       main.appendChild(section);
 
-      let datasets;
-      let unit;
-      if (archMap._) {
-        unit = archMap._[0].unit;
-        datasets = [{
-          label: base,
-          data: archMap._,
-          borderColor: "#0066cc",
-          backgroundColor: "#0066cc22",
-          tension: 0.1,
-          pointRadius: 4,
-        }];
-      } else {
-        const archesPresent = ARCH_ORDER.filter((a) => archMap[a]);
-        unit = archMap[archesPresent[0]][0].unit;
-        datasets = archesPresent.map((a) => ({
-          label: a,
-          data: archMap[a],
-          borderColor: ARCH_COLORS[a],
-          backgroundColor: ARCH_COLORS[a] + "22",
-          tension: 0.1,
-          pointRadius: 4,
-        }));
-      }
+      const unit = series[0].points[0].unit;
+      const datasets = series.map((s) => ({
+        label: s.label,
+        data: s.points,
+        borderColor: s.color,
+        backgroundColor: s.color + "22",
+        tension: 0.1,
+        pointRadius: 4,
+      }));
 
       new Chart(canvas, {
         type: "line",

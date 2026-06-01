@@ -77,7 +77,16 @@
           &mdash; the same build under the ELF FDPIC ABI (musl + libgcc compiled
           <code>-mfdpic</code>). glibc has no SH-FDPIC ABI, so this is musl-only.
           Serves as a position-independent reference ceiling for the shared
-          constant pool work.
+          constant pool work. Its trend chart overlays the non-LTO and
+          <code>+LTO</code> variants on one plot.
+        </li>
+        <li>
+          <strong>BusyBox+musl LTO</strong> &mdash; the same musl-linked build
+          with BusyBox compiled <code>-flto -ffat-lto-objects</code> (musl
+          itself is built normally, sidestepping a musl+LTO entry-point bug).
+          Captures the application-level LTO size benefit across
+          sh4/arm/x86/riscv32, and composes with FDPIC for the sh4 fdpic+LTO
+          variant.
         </li>
         <li>
           <strong>musl libc.so</strong> &mdash; musl built from source per
