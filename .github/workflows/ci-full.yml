@@ -80,6 +80,12 @@ jobs:
       - name: Run BusyBox+musl FDPIC build + smoke + size
         run: ABI=fdpic scripts/run-busybox-musl.sh
 
+      - name: Run BusyBox+musl LTO build + smoke + size
+        run: LTO=1 scripts/run-busybox-musl.sh
+
+      - name: Run BusyBox+musl FDPIC+LTO build + smoke + size
+        run: LTO=1 ABI=fdpic scripts/run-busybox-musl.sh
+
       - name: Run musl build + smoke + size
         run: scripts/run-musl.sh
 
@@ -94,6 +100,8 @@ jobs:
             /tmp/metrics/busybox-sh4.json \
             /tmp/metrics/busybox-musl-sh4.json \
             /tmp/metrics/busybox-musl-fdpic-sh4.json \
+            /tmp/metrics/busybox-musl-lto-sh4.json \
+            /tmp/metrics/busybox-musl-fdpic-lto-sh4.json \
             /tmp/metrics/musl-sh4.json \
             > metrics/all.json
           echo "Total metric entries: $(jq length metrics/all.json)"
@@ -454,6 +462,7 @@ jobs:
           scripts/run-coremark-size.sh
           scripts/run-busybox.sh
           scripts/run-busybox-musl.sh
+          LTO=1 scripts/run-busybox-musl.sh
           scripts/run-musl.sh
 
       - name: Run all size benchmarks for x86
@@ -465,6 +474,7 @@ jobs:
           scripts/run-coremark-size.sh
           scripts/run-busybox.sh
           scripts/run-busybox-musl.sh
+          LTO=1 scripts/run-busybox-musl.sh
           scripts/run-musl.sh
 
       # 32-bit RISC-V: musl-only (no rv32 glibc). BusyBox+musl size+smoke is the
@@ -474,7 +484,9 @@ jobs:
         env:
           TARGET: riscv64-linux-gnu
           GCC_PREFIX: /tmp/gcc-install-riscv32
-        run: scripts/run-busybox-musl.sh
+        run: |
+          scripts/run-busybox-musl.sh
+          LTO=1 scripts/run-busybox-musl.sh
 
       - name: Merge multi-arch metrics
         run: |
@@ -484,13 +496,16 @@ jobs:
             /tmp/metrics/coremark-arm.json \
             /tmp/metrics/busybox-arm.json \
             /tmp/metrics/busybox-musl-arm.json \
+            /tmp/metrics/busybox-musl-lto-arm.json \
             /tmp/metrics/musl-arm.json \
             /tmp/metrics/csibe-x86.json \
             /tmp/metrics/coremark-x86.json \
             /tmp/metrics/busybox-x86.json \
             /tmp/metrics/busybox-musl-x86.json \
+            /tmp/metrics/busybox-musl-lto-x86.json \
             /tmp/metrics/musl-x86.json \
             /tmp/metrics/busybox-musl-riscv32.json \
+            /tmp/metrics/busybox-musl-lto-riscv32.json \
             > metrics-multi/all-multi.json
           echo "Multi-arch entries: $(jq length metrics-multi/all-multi.json)"
 

@@ -59,19 +59,33 @@ esac
 # musl and BusyBox are compiled with -mfdpic and linked against a sidecar
 # FDPIC libgcc.a (the main toolchain is non-multilib so has no fdpic libgcc).
 ABI="${ABI:-}"
+LTO="${LTO:-}"
 ABI_CFLAGS=""
+LTO_CFLAGS=""
 MUSL_EXTRA_CONFIG=""
 METRIC="busybox_musl"
 FILE_TAG="busybox-musl"
 if [ "$ABI" = "fdpic" ]; then
   ABI_CFLAGS="-mfdpic"
-  METRIC="busybox_musl_fdpic"
-  FILE_TAG="busybox-musl-fdpic"
+  METRIC="${METRIC}_fdpic"
+  FILE_TAG="${FILE_TAG}-fdpic"
   # musl's shared libc.so link uses the compiler's default -lgcc, which on the
   # non-multilib main toolchain is the NON-fdpic libgcc → "attempt to mix FDPIC
   # and non-FDPIC objects". We only need the static libc.a (BusyBox is static),
   # so skip the shared lib entirely.
   MUSL_EXTRA_CONFIG="--disable-shared"
+fi
+# Optional LTO variant (LTO=1): build BusyBox (the application) with -flto, linked
+# against a normally-built musl. Composes with ABI (LTO=1 ABI=fdpic = fdpic+lto).
+# LTO is applied to BusyBox only, NOT to musl: musl's crt1.o/ldso under LTO drop the
+# _start_c/_dlstart_c references (a known musl+LTO bug that -ffat-lto-objects does not
+# fix for the entry-point crt), and patching vendored musl is undesirable. BusyBox is
+# the bulk of the image, so this captures the application LTO benefit cleanly.
+# -ffat-lto-objects keeps real code in BusyBox's partial-link (gcc -r) objects.
+if [ "$LTO" = "1" ]; then
+  LTO_CFLAGS="-flto -ffat-lto-objects"
+  METRIC="${METRIC}_lto"
+  FILE_TAG="${FILE_TAG}-lto"
 fi
 OUT_FILE="${OUT_FILE:-/tmp/metrics/${FILE_TAG}-${ARCH}.json}"
 FDPIC_LIBGCC="${FDPIC_LIBGCC:-$GCC_PREFIX/lib/sh-fdpic/libgcc.a}"
@@ -168,7 +182,7 @@ for a in "\$@"; do
 done
 if \$linking; then
   exec "$CC_RAW" \\
-    -B/usr/bin/${TARGET}- $ABI_CFLAGS \\
+    -B/usr/bin/${TARGET}- $ABI_CFLAGS $LTO_CFLAGS \\
     -nostdinc \\
     -isystem "$musl_install/include" \\
     -isystem /usr/${TARGET}/include \\
@@ -179,7 +193,7 @@ if \$linking; then
     "$musl_install/lib/crtn.o"
 else
   exec "$CC_RAW" \\
-    -B/usr/bin/${TARGET}- $ABI_CFLAGS \\
+    -B/usr/bin/${TARGET}- $ABI_CFLAGS $LTO_CFLAGS \\
     -nostdinc \\
     -isystem "$musl_install/include" \\
     -isystem /usr/${TARGET}/include \\
