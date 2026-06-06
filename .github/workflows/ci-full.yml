@@ -127,26 +127,36 @@ jobs:
 
   publish:
     needs: [build-and-test, bench-multi]
+    # Publish on partial success: if any build/bench lane failed, still deploy
+    # so the working architectures keep advancing. Each failed arch contributes
+    # no metrics this run, so its series simply stops at its last good commit.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           token: ${{ secrets.DEPENDABOT_RECREATE_PAT }}
 
+      # The sh4 (build-and-test) metrics artifact is uploaded only after every
+      # sh4 step succeeds, so it is all-or-nothing: if the sh4 build failed it is
+      # simply absent. Tolerate that here; downstream steps key off its presence.
       - name: Fetch metrics
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: metrics
           path: metrics
 
       - name: Fetch multi-arch metrics
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: metrics-multi
           path: metrics-multi
 
       - name: Fetch dejagnu sum file
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: dejagnu-${{ needs.build-and-test.outputs.commit }}
           path: dejagnu-raw
@@ -154,6 +164,15 @@ jobs:
       - name: Extract failed tests
         run: |
           mkdir -p html/dejagnu
+          # No gcc.sum means the sh4 build failed before dejagnu ran. Emit an
+          # empty result flagged build_failed so the panel renders cleanly
+          # instead of breaking on a missing file.
+          if [ ! -f dejagnu-raw/gcc.sum ]; then
+            echo "::warning::dejagnu gcc.sum missing — sh4 build failed; emitting empty failures.json"
+            echo '{"fail": [], "fail_stale": [], "build_failed": true}' \
+              > html/dejagnu/failures.json
+            exit 0
+          fi
           python3 scripts/extract-failures.py \
             dejagnu-raw/gcc.sum \
             "${{ needs.build-and-test.outputs.commit }}" \
@@ -200,14 +219,24 @@ jobs:
           fi
 
       - name: Merge sh4 + multi-arch metrics
+        id: combine
         run: |
-          python3 scripts/merge-metrics.py \
+          mkdir -p metrics
+          # --skip-missing: either lane may be absent on a partial run. The
+          # surviving lane's metrics still get stored; the missing arch's series
+          # just gets no new point this commit.
+          python3 scripts/merge-metrics.py --skip-missing \
             metrics/all.json \
             metrics-multi/all-multi.json \
             > metrics/combined.json
-          echo "Combined entries: $(jq length metrics/combined.json)"
+          COUNT=$(jq length metrics/combined.json)
+          echo "Combined entries: $COUNT"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
 
       - name: Store benchmark result
+        # Skip only when both lanes produced nothing — feeding the action an
+        # empty array would error. Other steps (badges, deploy) still run.
+        if: ${{ steps.combine.outputs.count != '0' }}
         uses: benchmark-action/github-action-benchmark@v1
         with:
           tool: customSmallerIsBetter
@@ -227,6 +256,18 @@ jobs:
       - name: Generate status badges
         run: |
           mkdir -p html/badge
+
+          # The sh4 metrics artifact is all-or-nothing (see Fetch metrics). If
+          # it is absent the sh4 build failed: emit red "build failing" badges
+          # for every sh4 metric and skip the value-based generation below.
+          if [ ! -f metrics/all.json ]; then
+            echo "::warning::metrics/all.json missing — sh4 build failed; emitting red badges"
+            for b in dejagnu csibe coremark lra busybox musl; do
+              curl -fsSL "https://img.shields.io/badge/${b}-build%20failing-red" \
+                -o "html/badge/${b}.svg"
+            done
+            exit 0
+          fi
 
           # dejagnu badge — same logic as before, now reads all.json.
           FAIL=$(jq '[.[] | select(.name=="dejagnu_fail_count")][0].value' metrics/all.json)
@@ -418,6 +459,10 @@ jobs:
     container:
       image: ghcr.io/mountain-reverie/gcc-sh-base:latest
     needs: [build-arm, build-x86, build-riscv32]
+    # Run even if a build lane failed: measure whichever installs exist so one
+    # arch's build break doesn't freeze the others. Per-arch steps below skip
+    # cleanly when their install is missing.
+    if: ${{ !cancelled() }}
     steps:
       - uses: actions/checkout@v5
 
@@ -427,12 +472,14 @@ jobs:
 
       - name: Download arm install
         uses: actions/download-artifact@v4
+        continue-on-error: true   # arm build may have failed
         with:
           name: gcc-install-arm
           path: /tmp/gcc-install-arm
 
       - name: Download x86 install
         uses: actions/download-artifact@v4
+        continue-on-error: true   # x86 build may have failed
         with:
           name: gcc-install-x86
           path: /tmp/gcc-install-x86
@@ -454,10 +501,15 @@ jobs:
                -type f -exec chmod +x {} \; 2>/dev/null || true
 
       - name: Run all size benchmarks for arm
+        continue-on-error: true   # a measurement failure must not abort other arches
         env:
           TARGET: arm-linux-gnueabihf
           GCC_PREFIX: /tmp/gcc-install-arm
         run: |
+          if [ ! -x "$GCC_PREFIX/bin/${TARGET}-gcc" ]; then
+            echo "::warning::arm GCC install missing — skipping arm benchmarks (series will stop)"
+            exit 0
+          fi
           scripts/run-csibe.sh
           scripts/run-coremark-size.sh
           scripts/run-busybox.sh
@@ -466,10 +518,15 @@ jobs:
           scripts/run-musl.sh
 
       - name: Run all size benchmarks for x86
+        continue-on-error: true   # a measurement failure must not abort other arches
         env:
           TARGET: i686-linux-gnu
           GCC_PREFIX: /tmp/gcc-install-x86
         run: |
+          if [ ! -x "$GCC_PREFIX/bin/${TARGET}-gcc" ]; then
+            echo "::warning::x86 GCC install missing — skipping x86 benchmarks (series will stop)"
+            exit 0
+          fi
           scripts/run-csibe.sh
           scripts/run-coremark-size.sh
           scripts/run-busybox.sh
@@ -481,6 +538,7 @@ jobs:
       # comparison lane; run-busybox-musl emits zero metrics if the rv32 install
       # is missing, so this never breaks the merge.
       - name: Run busybox-musl for riscv32
+        continue-on-error: true   # a measurement failure must not abort the merge
         env:
           TARGET: riscv64-linux-gnu
           GCC_PREFIX: /tmp/gcc-install-riscv32
@@ -491,7 +549,9 @@ jobs:
       - name: Merge multi-arch metrics
         run: |
           mkdir -p metrics-multi
-          python3 scripts/merge-metrics.py \
+          # --skip-missing: any arch whose build or measurement failed produced
+          # no JSON; skip it rather than abort. Its series stops this commit.
+          python3 scripts/merge-metrics.py --skip-missing \
             /tmp/metrics/csibe-arm.json \
             /tmp/metrics/coremark-arm.json \
             /tmp/metrics/busybox-arm.json \
