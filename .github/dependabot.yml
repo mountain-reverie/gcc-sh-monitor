@@ -1,0 +1,29 @@
+# Dependabot keeps pinned dependencies current. Monthly cadence, grouped so each
+# ecosystem yields a single PR per cycle (low noise). These PRs touch workflows
+# or the Dockerfile only — never state/last-tested.json — so they do NOT trigger
+# the heavy ci-full lane; docker-rebuild only runs on push to main, not on PRs.
+version: 2
+updates:
+  # Pinned action versions across .github/workflows/*.yml
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
+
+  # Base image in docker/Dockerfile.gcc-sh-base (debian:trixie-slim).
+  # Dockerfile.gcc-sh2a's `FROM gcc-sh-base:${BASE_TAG}` is an internal variable
+  # tag Dependabot cannot resolve, so it is simply left untouched.
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: monthly
+    groups:
+      docker:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
