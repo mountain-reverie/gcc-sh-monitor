@@ -68,9 +68,9 @@ jobs:
 
       # --- Lifecycle: green again -> close any open issue ----------------
       - name: Auto-close on green
-        if: ${{ steps.classify.outputs.type == 'none' }}
+        if: ${{ steps.classify.outputs.type == 'none' && inputs.build_result == 'success' }}
         run: |
-          num=$(gh issue list --label "$LABEL" --state open --json number -q '.[0].number')
+          num=$(gh issue list --label "$LABEL" --state open --json number -q '.[0].number // ""')
           if [ -n "$num" ]; then
             gh issue comment "$num" --body "SH green again at \`${{ inputs.commit }}\`. Closing."
             gh issue close "$num"
@@ -86,7 +86,7 @@ jobs:
         id: dedup
         if: ${{ steps.classify.outputs.type != 'none' }}
         run: |
-          num=$(gh issue list --label "$LABEL" --state open --json number -q '.[0].number')
+          num=$(gh issue list --label "$LABEL" --state open --json number -q '.[0].number // ""')
           echo "open=$num" >> "$GITHUB_OUTPUT"
           [ -n "$num" ] && echo "::notice::open issue #$num exists; skipping" || true
 
@@ -142,7 +142,7 @@ jobs:
           set +e
           timeout 300m git bisect run "$MONITOR_DIR/scripts/sh-bisect-predicate.sh" "$FTYPE" "$arg" \
             | tee /tmp/bisect.out
-          rc=$?
+          rc=${PIPESTATUS[0]}
           set -e
 
           if [ "$rc" -eq 124 ]; then
