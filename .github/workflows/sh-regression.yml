@@ -26,6 +26,12 @@ jobs:
     timeout-minutes: 350          # < the 360-min hosted-job cap; matches the bisect budget
     container:
       image: ghcr.io/mountain-reverie/gcc-sh-base:latest
+    # The container's default shell resolves to POSIX sh (dash); force bash so
+    # the array/`${PIPESTATUS[0]}` bash-isms below work (bash is present in the
+    # debian-trixie-slim base). bash also enables pipefail by default.
+    defaults:
+      run:
+        shell: bash
     env:
       GH_TOKEN: ${{ github.token }}
       LABEL: sh-ci-regression
@@ -149,7 +155,7 @@ jobs:
             echo "exhausted=1" >> "$GITHUB_OUTPUT"
             echo "narrowed_bad=$(git rev-parse refs/bisect/bad)" >> "$GITHUB_OUTPUT"
           else
-            culprit=$(grep -oE '^[0-9a-f]{40} is the first bad commit' /tmp/bisect.out | awk '{print $1}')
+            culprit=$(grep -oE '^[0-9a-f]{40} is the first bad commit' /tmp/bisect.out | awk '{print $1}' || true)
             echo "culprit=$culprit" >> "$GITHUB_OUTPUT"
             if [ -n "$culprit" ]; then
               echo "subject=$(git show -s --format=%s "$culprit")" >> "$GITHUB_OUTPUT"
