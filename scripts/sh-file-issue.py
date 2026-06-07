@@ -67,10 +67,14 @@ def body(r):
                      f"{GCC_COMMIT_URL.format(sha=r.get('narrowed_good'))}")
         lines.append(f"- bad:  {_short(r.get('narrowed_bad'))} — "
                      f"{GCC_COMMIT_URL.format(sha=r.get('narrowed_bad'))}")
-    else:
+    elif not r.get("good_commit"):
         lines.append("No bisect was run: the **last-green** commit bound could not "
                      "be established (no prior green run found in history). "
                      "First-red commit below.")
+    else:
+        lines.append("Bisect did not isolate a single culprit (the failing step had "
+                     "no reproduce command, or the bisect was inconclusive). "
+                     "The range below bounds the regression.")
     lines.append("")
 
     good, bad = r.get("good_commit"), r.get("bad_commit")

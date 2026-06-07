@@ -112,6 +112,7 @@ jobs:
       - name: Bisect
         id: bisect
         if: ${{ steps.classify.outputs.type != 'none' && steps.dedup.outputs.open == '' && steps.bound.outputs.good != '' }}
+        continue-on-error: true
         env:
           GOOD: ${{ steps.bound.outputs.good }}
           BAD:  ${{ inputs.commit }}

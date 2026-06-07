@@ -67,6 +67,14 @@ def test_no_bound_notes_bisect_skipped():
     body = run(r, "--body")
     assert "last-green" in body.lower() or "could not establish" in body.lower()
 
+def test_bound_but_no_culprit_notes_inconclusive():
+    # good_commit present, but no culprit and not exhausted (e.g. no reproduce cmd)
+    r = dict(BASE, culprit=None, bisected=True, exhausted=False)
+    body = run(r, "--body")
+    assert "did not isolate a single culprit" in body.lower()
+    # and it should NOT claim the bound could not be established
+    assert "could not be established" not in body.lower()
+
 if __name__ == "__main__":
     tests = [v for k, v in globals().items() if k.startswith("test_")]
     failed = 0
