@@ -38,6 +38,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # The gcc-sh-base image has curl/jq/git but not the GitHub CLI (gh is not
+      # in Debian's repos). Every step here drives gh, so fetch the static
+      # binary once. GH_TOKEN auths the api.github.com lookup to dodge rate limits.
+      - name: Install GitHub CLI
+        run: |
+          if command -v gh >/dev/null 2>&1; then gh --version; exit 0; fi
+          ver=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
+                  https://api.github.com/repos/cli/cli/releases/latest \
+                | jq -r .tag_name | sed 's/^v//')
+          curl -fsSL "https://github.com/cli/cli/releases/download/v${ver}/gh_${ver}_linux_amd64.tar.gz" \
+            -o /tmp/gh.tgz
+          tar -xzf /tmp/gh.tgz -C /tmp
+          install -m0755 "/tmp/gh_${ver}_linux_amd64/bin/gh" /usr/local/bin/gh
+          gh --version
+
       # --- Detection -----------------------------------------------------
       - name: Find failed step (build/script path)
         id: step
