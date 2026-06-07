@@ -41,7 +41,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       LABEL: sh-ci-regression
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Mark workspace safe for git
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
