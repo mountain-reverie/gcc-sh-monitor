@@ -52,4 +52,18 @@ setup; mk_build 0; mk_dejagnu "PASS: gcc.target/sh/pr1.c (test for excess errors
 echo "gcc.target/sh/pr1.c (test for excess errors)" > "$root/regressed.txt"
 check "dejagnu-now-passing-good" 0 dejagnu "$root/regressed.txt"
 
+# dejagnu: missing regressed-tests file -> skip(125)
+setup; mk_build 0; mk_dejagnu "PASS: x"
+check "dejagnu-missing-regressed-file-skip" 125 dejagnu "$root/does-not-exist.txt"
+
+# dejagnu: run-dejagnu wrote no gcc.sum -> skip(125)
+setup; mk_build 0
+cat > "$mon/scripts/run-dejagnu.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$mon/scripts/run-dejagnu.sh"
+echo "gcc.target/sh/pr1.c (test for excess errors)" > "$root/regressed.txt"
+check "dejagnu-no-gccsum-skip" 125 dejagnu "$root/regressed.txt"
+
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails failures"; exit 1; }

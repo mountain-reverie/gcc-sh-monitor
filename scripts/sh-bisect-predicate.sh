@@ -34,9 +34,11 @@ case "$TYPE" in
     if ( cd "$MONITOR_DIR" && eval "$ARG" ); then exit 0; else exit 1; fi
     ;;
   dejagnu)
+    [ -f "$ARG" ] || { echo "regressed-tests file not found: $ARG" >&2; exit 125; }
     build || exit 125
     ( cd "$MONITOR_DIR" && scripts/run-dejagnu.sh ) || true
     sum="$OUT_DIR/gcc.sum"
+    [ -f "$sum" ] || { echo "gcc.sum missing after dejagnu run: $sum" >&2; exit 125; }
     while IFS= read -r t; do
       [ -z "$t" ] && continue
       if grep -qF "FAIL: $t" "$sum"; then exit 1; fi
