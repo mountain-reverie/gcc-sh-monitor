@@ -34,9 +34,17 @@ jobs:
         shell: bash
     env:
       GH_TOKEN: ${{ github.token }}
+      # gh infers the repo by shelling out to git in the workspace; the checkout
+      # is owned by a different uid than the container's root user, so that git
+      # call hits "dubious ownership". GH_REPO makes gh skip git inference for
+      # issue/run commands; the safe.directory step below covers any other git use.
+      GH_REPO: ${{ github.repository }}
       LABEL: sh-ci-regression
     steps:
       - uses: actions/checkout@v5
+
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       # The gcc-sh-base image has curl/jq/git but not the GitHub CLI (gh is not
       # in Debian's repos). Every step here drives gh, so fetch the static
