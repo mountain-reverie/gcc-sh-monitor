@@ -13,6 +13,8 @@ permissions:
   contents: write
   pages: write
   id-token: write
+  issues: write
+  actions: read
 
 concurrency:
   group: ci-full
@@ -124,6 +126,15 @@ jobs:
           name: metrics
           path: metrics
           retention-days: 1
+
+  sh-regression:
+    needs: [build-and-test]
+    if: ${{ always() }}
+    uses: ./.github/workflows/sh-regression.yml
+    with:
+      commit: ${{ needs.build-and-test.outputs.commit }}
+      build_result: ${{ needs.build-and-test.result }}
+    secrets: inherit
 
   publish:
     needs: [build-and-test, bench-multi]

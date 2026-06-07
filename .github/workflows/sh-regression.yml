@@ -1,0 +1,202 @@
+# .github/workflows/sh-regression.yml
+name: sh-regression
+
+on:
+  workflow_call:
+    inputs:
+      commit:        { required: true,  type: string }   # failing (bad) gcc-mirror sha
+      build_result:  { required: true,  type: string }   # build-and-test job result
+  workflow_dispatch:
+    inputs:
+      commit:        { required: true,  type: string }
+      build_result:  { required: true,  type: string }
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: sh-regression
+  cancel-in-progress: false
+
+jobs:
+  detect-bisect-file:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350          # < the 360-min hosted-job cap; matches the bisect budget
+    container:
+      image: ghcr.io/mountain-reverie/gcc-sh-base:latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LABEL: sh-ci-regression
+    steps:
+      - uses: actions/checkout@v5
+
+      # --- Detection -----------------------------------------------------
+      - name: Find failed step (build/script path)
+        id: step
+        if: ${{ inputs.build_result == 'failure' }}
+        run: |
+          jobs=$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" 2>/dev/null || echo '{}')
+          # NOTE: when called via workflow_call we are part of the *ci-full* run,
+          # so GITHUB_RUN_ID is the ci-full run that contains build-and-test.
+          step=$(echo "$jobs" | jq -r '
+            (.jobs // []) | map(select(.name=="build-and-test")) | .[0].steps // []
+            | map(select(.conclusion=="failure")) | .[0].name // ""')
+          echo "name=$step" >> "$GITHUB_OUTPUT"
+
+      - name: Recompute dejagnu regression set (success path)
+        id: dejagnu
+        if: ${{ inputs.build_result == 'success' }}
+        run: |
+          gh run download "${GITHUB_RUN_ID}" -n "dejagnu-${{ inputs.commit }}" -D dj 2>/dev/null || true
+          if [ -f dj/gcc.sum ]; then
+            python3 scripts/extract-failures.py dj/gcc.sum "${{ inputs.commit }}" \
+              state/dejagnu-known-stale.json > failures.json
+          else
+            echo '{"fail": []}' > failures.json
+          fi
+
+      - name: Classify
+        id: classify
+        run: |
+          args=("${{ inputs.build_result }}" "${{ steps.step.outputs.name }}")
+          [ -f failures.json ] && args+=("failures.json")
+          python3 scripts/sh-regression-detect.py "${args[@]}" > detect.json
+          cat detect.json
+          echo "type=$(jq -r .failure_type detect.json)" >> "$GITHUB_OUTPUT"
+
+      # --- Lifecycle: green again -> close any open issue ----------------
+      - name: Auto-close on green
+        if: ${{ steps.classify.outputs.type == 'none' && inputs.build_result == 'success' }}
+        run: |
+          num=$(gh issue list --label "$LABEL" --state open --json number -q '.[0].number // ""')
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --body "SH green again at \`${{ inputs.commit }}\`. Closing."
+            gh issue close "$num"
+          fi
+          echo "SH green — nothing to bisect."
+
+      - name: Stop if green
+        if: ${{ steps.classify.outputs.type == 'none' }}
+        run: echo "done" && exit 0
+
+      # --- Dedup ---------------------------------------------------------
+      - name: Skip if an open regression issue already exists
+        id: dedup
+        if: ${{ steps.classify.outputs.type != 'none' }}
+        run: |
+          num=$(gh issue list --label "$LABEL" --state open --json number -q '.[0].number // ""')
+          echo "open=$num" >> "$GITHUB_OUTPUT"
+          [ -n "$num" ] && echo "::notice::open issue #$num exists; skipping" || true
+
+      # --- Last-green bound ---------------------------------------------
+      - name: Find last-green bound
+        id: bound
+        if: ${{ steps.classify.outputs.type != 'none' && steps.dedup.outputs.open == '' }}
+        run: |
+          python3 scripts/sh-lastgreen.py "${{ steps.classify.outputs.type }}" > bound.json
+          cat bound.json
+          echo "good=$(jq -r '.good_commit // ""' bound.json)" >> "$GITHUB_OUTPUT"
+
+      # --- Bisect --------------------------------------------------------
+      - name: Restore ccache (warm SH builds)
+        if: ${{ steps.classify.outputs.type != 'none' && steps.dedup.outputs.open == '' && steps.bound.outputs.good != '' }}
+        uses: actions/cache@v5
+        with:
+          path: /tmp/.ccache
+          key: ccache-sh4-${{ inputs.commit }}
+          restore-keys: |
+            ccache-sh4-
+
+      - name: Bisect
+        id: bisect
+        if: ${{ steps.classify.outputs.type != 'none' && steps.dedup.outputs.open == '' && steps.bound.outputs.good != '' }}
+        continue-on-error: true
+        env:
+          GOOD: ${{ steps.bound.outputs.good }}
+          BAD:  ${{ inputs.commit }}
+          FTYPE: ${{ steps.classify.outputs.type }}
+        run: |
+          set -x
+          MONITOR_DIR="$PWD"
+          export MONITOR_DIR OUT_DIR=/tmp/dejagnu-out
+          mkdir -p "$OUT_DIR"
+
+          # Resolve the per-type predicate argument.
+          arg=""
+          if [ "$FTYPE" = "script" ]; then
+            step=$(jq -r .failed_step detect.json)
+            arg=$(python3 scripts/sh-step-command.py "$step" || true)
+            if [ -z "$arg" ]; then echo "no reproduce command for step '$step'"; echo "noarg=1" >> "$GITHUB_OUTPUT"; exit 0; fi
+          elif [ "$FTYPE" = "dejagnu" ]; then
+            jq -r '.regressed_tests[]' detect.json > /tmp/regressed.txt
+            arg=/tmp/regressed.txt
+          fi
+
+          git clone --filter=blob:none https://github.com/gcc-mirror/gcc.git /tmp/bisect-gcc
+          cd /tmp/bisect-gcc
+          git bisect start "$BAD" "$GOOD"
+
+          # 300-min wall-clock budget; on timeout report the narrowed bad bound.
+          set +e
+          timeout 300m git bisect run "$MONITOR_DIR/scripts/sh-bisect-predicate.sh" "$FTYPE" "$arg" \
+            | tee /tmp/bisect.out
+          rc=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$rc" -eq 124 ]; then
+            echo "exhausted=1" >> "$GITHUB_OUTPUT"
+            echo "narrowed_bad=$(git rev-parse refs/bisect/bad)" >> "$GITHUB_OUTPUT"
+          else
+            culprit=$(grep -oE '^[0-9a-f]{40} is the first bad commit' /tmp/bisect.out | awk '{print $1}')
+            echo "culprit=$culprit" >> "$GITHUB_OUTPUT"
+            if [ -n "$culprit" ]; then
+              echo "subject=$(git show -s --format=%s "$culprit")" >> "$GITHUB_OUTPUT"
+              echo "author=$(git show -s --format=%an "$culprit")" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      # --- Assemble result + file issue ---------------------------------
+      - name: Build result JSON and file issue
+        if: ${{ steps.classify.outputs.type != 'none' && steps.dedup.outputs.open == '' }}
+        env:
+          GOOD: ${{ steps.bound.outputs.good }}
+          BAD:  ${{ inputs.commit }}
+        run: |
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          log_excerpt=$(gh run view "${GITHUB_RUN_ID}" --log-failed 2>/dev/null | tail -n 40 || true)
+
+          jq -n \
+            --argjson detect "$(cat detect.json)" \
+            --arg good "${GOOD}" \
+            --arg bad  "${BAD}" \
+            --arg run_url "$run_url" \
+            --arg culprit "${{ steps.bisect.outputs.culprit }}" \
+            --arg subject "${{ steps.bisect.outputs.subject }}" \
+            --arg author  "${{ steps.bisect.outputs.author }}" \
+            --arg narrowed_bad "${{ steps.bisect.outputs.narrowed_bad }}" \
+            --arg exhausted "${{ steps.bisect.outputs.exhausted }}" \
+            --arg log "$log_excerpt" \
+            '{
+               failure_type: $detect.failure_type,
+               failed_step:  $detect.failed_step,
+               regressed_tests: $detect.regressed_tests,
+               good_commit: (if $good == "" then null else $good end),
+               bad_commit:  $bad,
+               run_url: $run_url,
+               culprit: (if $culprit == "" then null else $culprit end),
+               culprit_subject: $subject,
+               culprit_author:  $author,
+               narrowed_good: (if $good == "" then null else $good end),
+               narrowed_bad:  (if $narrowed_bad == "" then null else $narrowed_bad end),
+               exhausted: ($exhausted == "1"),
+               bisected: ($good != ""),
+               log_excerpt: $log
+             }' > result.json
+          cat result.json
+
+          gh label create "$LABEL" --color B60205 --force >/dev/null 2>&1 || true
+          title=$(python3 scripts/sh-file-issue.py --title --result result.json)
+          python3 scripts/sh-file-issue.py --body --result result.json > body.md
+          gh issue create --label "$LABEL" --title "$title" --body-file body.md
