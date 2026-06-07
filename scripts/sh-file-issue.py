@@ -33,7 +33,7 @@ def title(r):
         return f"SH CI regression: {what} → gcc-mirror {_short(r['culprit'])}"
     if r.get("exhausted"):
         return (f"SH CI regression: {what} → range "
-                f"{_short(r['narrowed_good'])}..{_short(r['narrowed_bad'])}")
+                f"{_short(r.get('narrowed_good'))}..{_short(r.get('narrowed_bad'))}")
     return (f"SH CI regression: {what} → range "
             f"{_short(r.get('good_commit'))}..{_short(r.get('bad_commit'))}")
 
@@ -63,10 +63,10 @@ def body(r):
         lines.append("Bisect ran out of its time budget and **could not be fully "
                      "bisected** (incomplete). Narrowed to:")
         lines.append("")
-        lines.append(f"- good: {_short(r['narrowed_good'])} — "
-                     f"{GCC_COMMIT_URL.format(sha=r['narrowed_good'])}")
-        lines.append(f"- bad:  {_short(r['narrowed_bad'])} — "
-                     f"{GCC_COMMIT_URL.format(sha=r['narrowed_bad'])}")
+        lines.append(f"- good: {_short(r.get('narrowed_good'))} — "
+                     f"{GCC_COMMIT_URL.format(sha=r.get('narrowed_good'))}")
+        lines.append(f"- bad:  {_short(r.get('narrowed_bad'))} — "
+                     f"{GCC_COMMIT_URL.format(sha=r.get('narrowed_bad'))}")
     else:
         lines.append("No bisect was run: the **last-green** commit bound could not "
                      "be established (no prior green run found in history). "
