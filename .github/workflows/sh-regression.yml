@@ -77,14 +77,43 @@ jobs:
       - name: Recompute dejagnu regression set (success path)
         id: dejagnu
         if: ${{ inputs.build_result == 'success' }}
+        env:
+          COMMIT: ${{ inputs.commit }}
         run: |
-          gh run download "${GITHUB_RUN_ID}" -n "dejagnu-${{ inputs.commit }}" -D dj 2>/dev/null || true
-          if [ -f dj/gcc.sum ]; then
-            python3 scripts/extract-failures.py dj/gcc.sum "${{ inputs.commit }}" \
-              state/dejagnu-known-stale.json > failures.json
+          # The SH lane carries a STABLE baseline of non-stale FAILs (e.g. the
+          # pr51244 family). A real regression is a failure that is new versus the
+          # last green run, NOT merely "`.fail` is non-empty" (which is true every
+          # run). So: extract this run's fails, extract the last-green run's fails,
+          # and report only the delta. If we can't establish a baseline, suppress
+          # detection rather than flag the whole baseline as a regression.
+          stale=state/dejagnu-known-stale.json
+
+          gh run download "$GITHUB_RUN_ID" -n "dejagnu-${COMMIT}" -D dj_cur 2>/dev/null || true
+          if [ -f dj_cur/gcc.sum ]; then
+            python3 scripts/extract-failures.py dj_cur/gcc.sum "$COMMIT" "$stale" > cur.json
           else
+            echo '{"fail": []}' > cur.json
+          fi
+
+          python3 scripts/sh-lastgreen.py dejagnu > bound.json || echo '{}' > bound.json
+          gcommit=$(jq -r '.good_commit // ""' bound.json)
+          grun=$(jq -r '.good_run_id // ""' bound.json)
+          have_base=0
+          if [ -n "$grun" ] && [ -n "$gcommit" ]; then
+            gh run download "$grun" -n "dejagnu-${gcommit}" -D dj_base 2>/dev/null || true
+            if [ -f dj_base/gcc.sum ]; then
+              python3 scripts/extract-failures.py dj_base/gcc.sum "$gcommit" "$stale" > base.json
+              have_base=1
+            fi
+          fi
+
+          if [ "$have_base" = "1" ]; then
+            python3 scripts/sh-dejagnu-delta.py cur.json base.json > failures.json
+          else
+            echo "::notice::no last-green dejagnu baseline available — suppressing dejagnu detection this run"
             echo '{"fail": []}' > failures.json
           fi
+          echo "current=$(jq '.fail|length' cur.json), baseline=$(jq '.fail|length' base.json 2>/dev/null || echo 0), new=$(jq '.fail|length' failures.json)"
 
       - name: Classify
         id: classify
@@ -148,6 +177,13 @@ jobs:
           FTYPE: ${{ steps.classify.outputs.type }}
         run: |
           set -x
+          # Empty range: the last-green commit is the one we are testing (sync
+          # had not advanced, or only this commit is in range). Nothing to bisect.
+          if [ "$GOOD" = "$BAD" ]; then
+            echo "last-green == first-red ($GOOD) — empty range, skipping bisect"
+            echo "emptyrange=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           MONITOR_DIR="$PWD"
           export MONITOR_DIR OUT_DIR=/tmp/dejagnu-out
           mkdir -p "$OUT_DIR"
