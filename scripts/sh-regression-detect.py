@@ -41,7 +41,7 @@ def main(argv):
         return 2
     build_result, failed_step = argv[1], argv[2]
     failures = None
-    if len(argv) == 4:
+    if len(argv) == 4 and build_result == "success":
         failures = json.loads(Path(argv[3]).read_text())
     print(json.dumps(classify(build_result, failed_step, failures)))
     return 0

@@ -50,6 +50,16 @@ def test_cancelled_is_none():
     out = run("cancelled", "")
     assert out["failure_type"] == "none"
 
+def test_failure_does_not_read_failures_file():
+    # A failure result must ignore the failures file entirely (no crash on a bogus path).
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "failure", "Run musl build + smoke + size", "/nonexistent/x.json"],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["failure_type"] == "script"
+
 if __name__ == "__main__":
     tests = [v for k, v in globals().items() if k.startswith("test_")]
     failed = 0
