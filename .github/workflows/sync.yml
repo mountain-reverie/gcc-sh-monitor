@@ -20,7 +20,7 @@ jobs:
       # triggers downstream workflows (ci-full via its push paths filter).
       # GITHUB_TOKEN-authored pushes are silently dropped by GitHub's
       # recursion-prevention policy.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           token: ${{ secrets.DEPENDABOT_RECREATE_PAT }}
 

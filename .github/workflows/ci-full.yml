@@ -29,7 +29,7 @@ jobs:
     outputs:
       commit: ${{ steps.meta.outputs.commit }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Read tested commit
         id: meta
@@ -109,7 +109,7 @@ jobs:
           echo "Total metric entries: $(jq length metrics/all.json)"
 
       - name: Upload raw dejagnu artefacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dejagnu-${{ steps.meta.outputs.commit }}
           path: |
@@ -121,7 +121,7 @@ jobs:
         run: cp /tmp/lra-results.json metrics/lra-results.json
 
       - name: Stash metrics for the publish job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: metrics
           path: metrics
@@ -144,7 +144,7 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           token: ${{ secrets.DEPENDABOT_RECREATE_PAT }}
 
@@ -152,21 +152,21 @@ jobs:
       # sh4 step succeeds, so it is all-or-nothing: if the sh4 build failed it is
       # simply absent. Tolerate that here; downstream steps key off its presence.
       - name: Fetch metrics
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: metrics
           path: metrics
 
       - name: Fetch multi-arch metrics
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: metrics-multi
           path: metrics-multi
 
       - name: Fetch dejagnu sum file
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: dejagnu-${{ needs.build-and-test.outputs.commit }}
@@ -336,15 +336,15 @@ jobs:
             -o html/badge/musl.svg
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: html
 
       - name: Deploy to Pages
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   build-arm:
     runs-on: ubuntu-latest
@@ -352,7 +352,7 @@ jobs:
     container:
       image: ghcr.io/mountain-reverie/gcc-sh-base:latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Read tested commit
         id: meta
@@ -378,7 +378,7 @@ jobs:
         run: scripts/build-gcc.sh "${{ steps.meta.outputs.commit }}" arm-linux-gnueabihf
 
       - name: Upload arm install artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gcc-install-arm
           path: /tmp/gcc-install-arm
@@ -390,7 +390,7 @@ jobs:
     container:
       image: ghcr.io/mountain-reverie/gcc-sh-base:latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Read tested commit
         id: meta
@@ -416,7 +416,7 @@ jobs:
         run: scripts/build-gcc.sh "${{ steps.meta.outputs.commit }}" i686-linux-gnu
 
       - name: Upload x86 install artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gcc-install-x86
           path: /tmp/gcc-install-x86
@@ -430,7 +430,7 @@ jobs:
     container:
       image: ghcr.io/mountain-reverie/gcc-sh-base:latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Read tested commit
         id: meta
@@ -458,7 +458,7 @@ jobs:
         run: scripts/build-gcc.sh "${{ steps.meta.outputs.commit }}" riscv64-linux-gnu
 
       - name: Upload riscv32 install artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gcc-install-riscv32
           path: /tmp/gcc-install-riscv32
@@ -475,35 +475,35 @@ jobs:
     # cleanly when their install is missing.
     if: ${{ !cancelled() }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Read tested commit
         id: meta
         run: echo "commit=$(jq -r .commit state/last-tested.json)" >> "$GITHUB_OUTPUT"
 
       - name: Download arm install
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         continue-on-error: true   # arm build may have failed
         with:
           name: gcc-install-arm
           path: /tmp/gcc-install-arm
 
       - name: Download x86 install
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         continue-on-error: true   # x86 build may have failed
         with:
           name: gcc-install-x86
           path: /tmp/gcc-install-x86
 
       - name: Download riscv32 install
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         continue-on-error: true   # rv32 build may have been skipped/failed
         with:
           name: gcc-install-riscv32
           path: /tmp/gcc-install-riscv32
 
       - name: Restore executable bits on downloaded installs
-        # Artifact download via actions/download-artifact@v4 can drop +x bits
+        # Artifact download via actions/download-artifact@v8 can drop +x bits
         # on regular files. Restore so the GCC binaries can be invoked.
         run: |
           find /tmp/gcc-install-arm/bin /tmp/gcc-install-arm/libexec \
@@ -581,7 +581,7 @@ jobs:
           echo "Multi-arch entries: $(jq length metrics-multi/all-multi.json)"
 
       - name: Upload multi-arch metrics
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: metrics-multi
           path: metrics-multi
