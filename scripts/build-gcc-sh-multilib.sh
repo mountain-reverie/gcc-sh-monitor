@@ -67,14 +67,15 @@ GCC="$GCC_PREFIX/bin/${TARGET}-gcc"
 echo "build-gcc-sh-multilib: installed $GCC"
 
 # Self-check (informative; the CI 'Verify SH ISA flags' step is the real gate):
-# the driver MUST now accept the multilib -m options that --disable-multilib
-# rejected. Compile-to-assembly (-S) avoids needing as/binutils here.
+# the driver MUST accept the multilib -m options that --disable-multilib
+# rejected. BIG-ENDIAN (-mb): GCC has no little-endian SH-2A. Compile-to-assembly
+# (-S) avoids needing as/binutils here.
 echo "=== accepted multilib variants ==="
 "$GCC" -print-multi-lib 2>/dev/null || true
 for isa in m2 m2a m4; do
-  if printf 'int f(int x){return x*3+1;}\n' | "$GCC" -O2 -"$isa" -S -x c - -o /dev/null 2>/dev/null; then
-    echo "build-gcc-sh-multilib: -$isa OK"
+  if printf 'int f(int x){return x*3+1;}\n' | "$GCC" -O2 -"$isa" -mb -S -x c - -o /dev/null 2>/dev/null; then
+    echo "build-gcc-sh-multilib: -$isa -mb OK"
   else
-    echo "build-gcc-sh-multilib: -$isa FAILED (multilib list may not include it)" >&2
+    echo "build-gcc-sh-multilib: -$isa -mb FAILED" >&2
   fi
 done

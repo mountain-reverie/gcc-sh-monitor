@@ -4,17 +4,22 @@
 # translation units that produced an object under ALL THREE ISAs (apples-to-
 # apples). Emits /tmp/metrics/sh-density.json via scripts/sh_density_metrics.py.
 #
-# Compile-to-object only: no link, no libgcc, no qemu. -mN are ISA-selection
-# flags accepted by any SH gcc; SH binutils assembles every SH ISA. Run
-# scripts/check-sh-isa-flags.sh first. Any TU that fails identically across all
-# three ISAs simply drops out of the intersection (and out of *_objects_common),
-# so partial corpora skew nothing.
+# Compile-to-object only: no link, no libgcc, no qemu. Needs the MULTILIB SH gcc
+# (scripts/build-gcc-sh-multilib.sh) — the main --disable-multilib sh4 gcc
+# rejects -m2/-m2a ("not supported by this configuration"). All three ISAs are
+# compiled BIG-ENDIAN (-mb): GCC has no little-endian SH-2A (sh.h: "SH2a does
+# not support little-endian"), and .text *size* is endian-invariant, so the
+# big-endian byte counts still answer the density question for little-endian
+# J-Core. Run scripts/check-sh-isa-flags.sh first. Any TU that fails identically
+# across all three ISAs simply drops out of the intersection (and out of
+# *_objects_common), so partial corpora skew nothing.
 #
 # Environment:
 #   TARGET        GNU triple for as/size (default: sh4-linux-gnu)
 #   GCC_PREFIX    install dir of the candidate gcc (default: /tmp/gcc-install)
 #   GCC           compiler (default: $GCC_PREFIX/bin/${TARGET}-gcc)
 #   SIZE          size tool (default: /usr/bin/${TARGET}-size, Debian cross binutils)
+#   ENDIAN        endian flag for all ISAs (default: -mb — SH-2A is big-endian-only)
 #   OPT           optimization level (default: Os — the density-relevant setting)
 #   BUSYBOX_DIR   default: $PWD/busybox
 #   CSIBE_DIR     default: $PWD/csibe/src
@@ -27,6 +32,7 @@ TARGET="${TARGET:-sh4-linux-gnu}"
 GCC_PREFIX="${GCC_PREFIX:-/tmp/gcc-install}"
 GCC="${GCC:-$GCC_PREFIX/bin/${TARGET}-gcc}"
 SIZE="${SIZE:-/usr/bin/${TARGET}-size}"
+ENDIAN="${ENDIAN:--mb}"   # big-endian: GCC has no little-endian SH-2A
 OPT="${OPT:-Os}"
 BUSYBOX_DIR="${BUSYBOX_DIR:-$PWD/busybox}"
 CSIBE_DIR="${CSIBE_DIR:-$PWD/csibe/src}"
@@ -99,7 +105,7 @@ compile_tree_perfile() {
   local src_c obj
   while IFS= read -r -d '' src_c; do
     obj="${src_c%.*}.o"
-    "$GCC" -"$isa" -"$OPT" -B/usr/bin/"${TARGET}"- -c -w -std=gnu11 -DHAVE_CONFIG_H \
+    "$GCC" -"$isa" $ENDIAN -"$OPT" -B/usr/bin/"${TARGET}"- -c -w -std=gnu11 -DHAVE_CONFIG_H \
       -Wno-error=implicit-function-declaration -Wno-error=implicit-int \
       -Wno-error=int-conversion "${iflags[@]}" "$src_c" -o "$obj" 2>/dev/null || true
   done < <(find "$out" \( -name '*.c' -o -name '*.i' \) -print0)
@@ -115,7 +121,7 @@ compile_busybox() {
   rm -rf "$out"; mkdir -p "$out"; cp -a "$BUSYBOX_DIR"/. "$out"/
   ( cd "$out"
     export CROSS_COMPILE="/usr/bin/${TARGET}-"
-    local cc="$GCC -$isa -B/usr/bin/${TARGET}-"
+    local cc="$GCC -$isa $ENDIAN -B/usr/bin/${TARGET}-"
     make defconfig ARCH=sh CC="$cc" >/dev/null 2>&1 || true
     for o in TC FEATURE_TC SHA1_HWACCEL SHA256_HWACCEL; do
       sed -i "s|^CONFIG_${o}=.*|# CONFIG_${o} is not set|" .config 2>/dev/null || true
