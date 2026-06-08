@@ -122,15 +122,24 @@ compile_busybox() {
   ( cd "$out"
     export CROSS_COMPILE="/usr/bin/${TARGET}-"
     local cc="$GCC -$isa $ENDIAN -B/usr/bin/${TARGET}-"
-    make defconfig ARCH=sh CC="$cc" >/dev/null 2>&1 || true
+    make defconfig ARCH=sh CC="$cc" >defconfig.log 2>&1 || true
     for o in TC FEATURE_TC SHA1_HWACCEL SHA256_HWACCEL; do
       sed -i "s|^CONFIG_${o}=.*|# CONFIG_${o} is not set|" .config 2>/dev/null || true
     done
-    make oldconfig ARCH=sh CC="$cc" >/dev/null 2>&1 || true
+    make oldconfig ARCH=sh CC="$cc" >oldconfig.log 2>&1 || true
     make -k -j"$JOBS" ARCH=sh CC="$cc" CROSS_COMPILE="/usr/bin/${TARGET}-" \
       KBUILD_CFLAGS_EXTRA="-$OPT -B/usr/bin/${TARGET}- --sysroot=$SYSROOT" \
-      >/dev/null 2>&1 || true
+      >build.log 2>&1 || true
   )
+  # Diagnostic: report objects produced; if suspiciously low, surface the first
+  # compile errors (kbuild swallows them) so a broken endian/sysroot combo is
+  # visible in the CI log rather than silently yielding zeros.
+  local n; n=$(find "$out" -name '*.o' | wc -l)
+  echo "measure-sh-density: busybox -$isa produced $n .o" >&2
+  if [ "$n" -lt 20 ]; then
+    echo "measure-sh-density: busybox -$isa first errors:" >&2
+    grep -iE 'error:|#error|fatal' "$out/build.log" 2>/dev/null | head -8 >&2 || true
+  fi
 }
 
 declare -A RAW
@@ -155,9 +164,19 @@ measure_coremark() {
     RAW[coremark]="0 0 0 0"; return
   fi
   local work; work=$(mktemp -d); CLEANUP_DIRS+=("$work")
+  # CoreMark ships many ports (simple/posix/barebones/rtems/zephyr/...), several
+  # defining the same core_portme symbols/headers. Compiling them all makes the
+  # -I scan pick up conflicting core_portme.h and pulls in RTOS-only ports that
+  # cannot compile, so almost nothing survives the intersection. Restrict to the
+  # canonical 'simple' port (matches run-coremark-size.sh): the top-level
+  # core_*.c + coremark.h plus simple/.
+  local src="$work/src"
+  mkdir -p "$src/simple"
+  cp "$COREMARK_DIR"/*.c "$COREMARK_DIR"/*.h "$src"/ 2>/dev/null || true
+  cp "$COREMARK_DIR"/simple/*.c "$COREMARK_DIR"/simple/*.h "$src/simple"/ 2>/dev/null || true
   for isa in "${ISAS[@]}"; do
     echo "measure-sh-density: coremark -$isa ..." >&2
-    compile_tree_perfile "$COREMARK_DIR" "$isa" "$work/$isa"
+    compile_tree_perfile "$src" "$isa" "$work/$isa"
   done
   RAW[coremark]=$(measure_common "$work/m2" "$work/m2a" "$work/m4")
   rm -rf "$work"
