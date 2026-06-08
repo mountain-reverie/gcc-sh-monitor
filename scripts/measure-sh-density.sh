@@ -38,8 +38,22 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ISAS=(m2 m2a m4)
 
 mkdir -p "$(dirname "$OUT_FILE")"
-[ -x "$GCC" ]  || { echo "measure-sh-density: missing compiler $GCC" >&2; exit 1; }
-[ -x "$SIZE" ] || { echo "measure-sh-density: missing size tool $SIZE" >&2; exit 1; }
+# Fail-safe: if the (multilib) compiler or size tool is missing, emit an
+# all-zero metrics file and exit 0. This keeps a build failure of the separate
+# multilib compiler from breaking the all-or-nothing metrics merge — which would
+# otherwise take down the ENTIRE sh4 metrics artifact, not just this lane.
+emit_zero() {
+  echo "measure-sh-density: $1 — emitting zero metrics" >&2
+  python3 "$SCRIPT_DIR/sh_density_metrics.py" > "$OUT_FILE" <<'JSON'
+{
+  "busybox":  {"m2": 0, "m2a": 0, "m4": 0, "common": 0},
+  "csibe":    {"m2": 0, "m2a": 0, "m4": 0, "common": 0},
+  "coremark": {"m2": 0, "m2a": 0, "m4": 0, "common": 0}
+}
+JSON
+}
+[ -x "$GCC" ]  || { emit_zero "missing compiler $GCC"; exit 0; }
+[ -x "$SIZE" ] || { emit_zero "missing size tool $SIZE"; exit 0; }
 
 # Per-corpus temp trees are registered here and removed on ANY exit (including
 # interrupt), so a SIGINT mid-build doesn't leak hundreds of MB of object trees.
