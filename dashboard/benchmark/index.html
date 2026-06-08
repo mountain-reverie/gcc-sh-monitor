@@ -48,6 +48,17 @@
     const ARCH_COLORS = { sh4: "#3b82f6", arm: "#10b981", x86: "#f59e0b", riscv32: "#a855f7" };
     const ARCH_ORDER = ["sh4", "arm", "x86", "riscv32"];
 
+    // SH code-density metrics (sh_density_*_text_bytes_<isa>) carry an ISA suffix
+    // instead of an arch suffix; collapse the ISA variants into one chart per
+    // metric so SH-2 / SH-2A / SH-4 appear as comparable series. m2a is listed
+    // before m2 and the match is end-anchored, so "_m2a" never matches "_m2".
+    const ISA_RE = /_(m2a|m2|m4)$/;
+    const ISA_VARIANTS = {
+      m2:  { label: "SH-2",  color: "#ef4444", order: 0 },
+      m2a: { label: "SH-2A", color: "#10b981", order: 1 },
+      m4:  { label: "SH-4",  color: "#3b82f6", order: 2 },
+    };
+
     // FDPIC (sh4-only) variants share one chart, keyed by LTO state rather than
     // arch. The `_fdpic` guard in resolve() scopes this so the non-fdpic `_lto`
     // charts stay arch-keyed and unchanged.
@@ -74,6 +85,15 @@
         const key = lto ? "fdpic +LTO" : "fdpic";
         const v = FDPIC_VARIANTS[key];
         return { chartBase, seriesKey: key, label: v.label, color: v.color, order: v.order };
+      }
+      const im = name.match(ISA_RE);
+      if (im) {
+        const isa = im[1];
+        const v = ISA_VARIANTS[isa];
+        return {
+          chartBase: name.slice(0, -im[0].length), seriesKey: isa,
+          label: v.label, color: v.color, order: v.order,
+        };
       }
       if (arch === null) {
         return { chartBase: base, seriesKey: "_", label: base, color: "#0066cc", order: 0 };
