@@ -71,8 +71,10 @@ CLEANUP_DIRS=()
 cleanup() { [ "${#CLEANUP_DIRS[@]}" -gt 0 ] && rm -rf "${CLEANUP_DIRS[@]}"; return 0; }
 trap cleanup EXIT
 
-# .text bytes of one object (0 if unreadable).
-text_of() { "$SIZE" --format=sysv "$1" 2>/dev/null | awk '$1==".text"{s+=$2} END{print s+0}' || true; }
+# .text bytes of one object (0 if unreadable). Match the .text PREFIX so
+# -ffunction-sections output (.text.<fn>, as BusyBox's --gc-sections build emits)
+# is counted, not just a single ".text" section.
+text_of() { "$SIZE" --format=sysv "$1" 2>/dev/null | awk '$1 ~ /^\.text/{s+=$2} END{print s+0}' || true; }
 
 # Sorted relative paths of all .o under a dir (for `comm`).
 rel_objects() { ( cd "$1" 2>/dev/null && find . -name '*.o' | sort ) || true; }
