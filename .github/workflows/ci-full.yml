@@ -70,12 +70,15 @@ jobs:
       - name: Run CoreMark size measurement
         run: scripts/run-coremark-size.sh
 
+      - name: Build multilib SH GCC (m2/m2a/m4) for the density lane
+        run: scripts/build-gcc-sh-multilib.sh
+
       - name: Verify SH ISA flags (m2/m2a/m4) compile-to-object
         continue-on-error: true
-        run: scripts/check-sh-isa-flags.sh
+        run: GCC=/tmp/gcc-multilib-install/bin/sh4-linux-gnu-gcc scripts/check-sh-isa-flags.sh
 
       - name: Measure SH code density (m2/m2a/m4)
-        run: scripts/measure-sh-density.sh
+        run: GCC=/tmp/gcc-multilib-install/bin/sh4-linux-gnu-gcc scripts/measure-sh-density.sh
 
       - name: Run LRA differential watchdog
         run: scripts/run-lra-corpus.sh
