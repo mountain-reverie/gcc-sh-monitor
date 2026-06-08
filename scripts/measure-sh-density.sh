@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Measure SH code-density: compile BusyBox + CSiBE + CoreMark to objects under
-# -m2, -m2a and -m4 with the SAME sh4 compiler, then sum .text over the set of
-# translation units that produced an object under ALL THREE ISAs (apples-to-
-# apples). Emits /tmp/metrics/sh-density.json via scripts/sh_density_metrics.py.
+# Measure SH code-density by compiling corpora to objects and summing .text over
+# the translation units that built under every compared ISA. Two parts:
+#   * DENSITY comparison (CSiBE + CoreMark): three-way -m2/-m2a/-m4, BIG-ENDIAN.
+#   * BusyBox: -m2 vs -m4 only, LITTLE-ENDIAN, kept SEPARATE from the density
+#     totals — its kbuild can't build big-endian (so no SH-2A).
+# Emits /tmp/metrics/sh-density.json via scripts/sh_density_metrics.py.
 #
 # Compile-to-object only: no link, no libgcc, no qemu. Needs the MULTILIB SH gcc
 # (scripts/build-gcc-sh-multilib.sh) — the main --disable-multilib sh4 gcc
@@ -52,9 +54,11 @@ emit_zero() {
   echo "measure-sh-density: $1 — emitting zero metrics" >&2
   python3 "$SCRIPT_DIR/sh_density_metrics.py" > "$OUT_FILE" <<'JSON'
 {
-  "busybox":  {"m2": 0, "m2a": 0, "m4": 0, "common": 0},
-  "csibe":    {"m2": 0, "m2a": 0, "m4": 0, "common": 0},
-  "coremark": {"m2": 0, "m2a": 0, "m4": 0, "common": 0}
+  "density": {
+    "csibe":    {"m2": 0, "m2a": 0, "m4": 0, "common": 0},
+    "coremark": {"m2": 0, "m2a": 0, "m4": 0, "common": 0}
+  },
+  "busybox": {"m2": 0, "m4": 0, "common": 0}
 }
 JSON
 }
@@ -89,6 +93,20 @@ measure_common() {
   echo "$s2 $s2a $s4 $n"
 }
 
+# Two-ISA variant for BusyBox (m2 vs m4 only): print "<m2> <m4> <common>".
+measure_common2() {
+  local d2="$1" d4="$2"
+  local common n=0 s2=0 s4=0 rel
+  common=$(comm -12 <(rel_objects "$d2") <(rel_objects "$d4"))
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    n=$((n + 1))
+    s2=$(( s2 + $(text_of "$d2/$rel") ))
+    s4=$(( s4 + $(text_of "$d4/$rel") ))
+  done <<< "$common"
+  echo "$s2 $s4 $n"
+}
+
 # Per-file compiler for self-contained C trees (CSiBE projects, CoreMark).
 # Mirrors scripts/run-csibe.sh: ignore upstream Makefiles, scan for -I dirs,
 # compile every .c to a sibling .o. Failures are tolerated (the TU drops out).
@@ -111,29 +129,31 @@ compile_tree_perfile() {
   done < <(find "$out" \( -name '*.c' -o -name '*.i' \) -print0)
 }
 
-# BusyBox via its own kbuild (needs generated headers). -k keeps going past a
-# failed TU; objects land at deterministic relative paths, so the cross-ISA
-# intersection still lines up. NOTE: this relies on kbuild leaving per-TU .o
-# files on disk (it does — they coexist with the built-in.a archives), which is
-# what measure_common reads.
+# BusyBox via its own kbuild. LITTLE-ENDIAN only (no $ENDIAN): BusyBox can't
+# build SH-2A (big-endian), so it's measured m2-vs-m4 — both little-endian, which
+# is J-Core-native. Mirrors run-busybox.sh's working config (CONFIG_STATIC=y,
+# host HOSTCC) so applets actually compile; the final link may fail for -m2 (no
+# m2 libc in the sh4 sysroot), but -k leaves the per-TU .o we measure. The
+# generated headers come from defconfig/oldconfig built with the host compiler.
 compile_busybox() {
   local isa="$1" out="$2"
   rm -rf "$out"; mkdir -p "$out"; cp -a "$BUSYBOX_DIR"/. "$out"/
   ( cd "$out"
     export CROSS_COMPILE="/usr/bin/${TARGET}-"
-    local cc="$GCC -$isa $ENDIAN -B/usr/bin/${TARGET}-"
-    make defconfig ARCH=sh CC="$cc" >defconfig.log 2>&1 || true
+    local cc="$GCC -$isa -B/usr/bin/${TARGET}-"   # little-endian (no -mb)
+    make defconfig ARCH=sh CC="$cc" HOSTCC=gcc >defconfig.log 2>&1 || true
+    sed -i 's|^# CONFIG_STATIC is not set|CONFIG_STATIC=y|; s|^CONFIG_STATIC=.*|CONFIG_STATIC=y|' .config 2>/dev/null || true
+    grep -q '^CONFIG_STATIC=y' .config || echo "CONFIG_STATIC=y" >> .config
     for o in TC FEATURE_TC SHA1_HWACCEL SHA256_HWACCEL; do
       sed -i "s|^CONFIG_${o}=.*|# CONFIG_${o} is not set|" .config 2>/dev/null || true
     done
-    make oldconfig ARCH=sh CC="$cc" >oldconfig.log 2>&1 || true
-    make -k -j"$JOBS" ARCH=sh CC="$cc" CROSS_COMPILE="/usr/bin/${TARGET}-" \
+    make oldconfig ARCH=sh CC="$cc" HOSTCC=gcc >oldconfig.log 2>&1 || true
+    make -k -j"$JOBS" ARCH=sh CC="$cc" HOSTCC=gcc CROSS_COMPILE="/usr/bin/${TARGET}-" \
       KBUILD_CFLAGS_EXTRA="-$OPT -B/usr/bin/${TARGET}- --sysroot=$SYSROOT" \
       >build.log 2>&1 || true
   )
   # Diagnostic: report objects produced; if suspiciously low, surface the first
-  # compile errors (kbuild swallows them) so a broken endian/sysroot combo is
-  # visible in the CI log rather than silently yielding zeros.
+  # errors (kbuild swallows them) so a broken build is visible in the CI log.
   local n; n=$(find "$out" -name '*.o' | wc -l)
   echo "measure-sh-density: busybox -$isa produced $n .o" >&2
   if [ "$n" -lt 20 ]; then
@@ -144,17 +164,18 @@ compile_busybox() {
 
 declare -A RAW
 
+# BusyBox: little-endian, m2 vs m4 only (separate from the density comparison).
 measure_busybox() {
   if [ ! -d "$BUSYBOX_DIR" ]; then
     echo "measure-sh-density: skip busybox (no $BUSYBOX_DIR)" >&2
-    RAW[busybox]="0 0 0 0"; return
+    RAW[busybox]="0 0 0"; return
   fi
   local work; work=$(mktemp -d); CLEANUP_DIRS+=("$work")
-  for isa in "${ISAS[@]}"; do
-    echo "measure-sh-density: busybox -$isa ..." >&2
+  for isa in m2 m4; do
+    echo "measure-sh-density: busybox -$isa (little-endian) ..." >&2
     compile_busybox "$isa" "$work/$isa"
   done
-  RAW[busybox]=$(measure_common "$work/m2" "$work/m2a" "$work/m4")
+  RAW[busybox]=$(measure_common2 "$work/m2" "$work/m4")
   rm -rf "$work"
 }
 
@@ -205,15 +226,19 @@ measure_busybox
 measure_csibe
 measure_coremark
 
-read -r s2_bb s2a_bb s4_bb n_bb <<< "${RAW[busybox]}"
+# Density corpora (CSiBE + CoreMark): three-way m2/m2a/m4 (big-endian).
 read -r s2_cs s2a_cs s4_cs n_cs <<< "${RAW[csibe]}"
 read -r s2_cm s2a_cm s4_cm n_cm <<< "${RAW[coremark]}"
+# BusyBox: m2 vs m4 only (little-endian), separate from the density comparison.
+read -r s2_bb s4_bb n_bb <<< "${RAW[busybox]}"
 
 python3 "$SCRIPT_DIR/sh_density_metrics.py" > "$OUT_FILE" <<JSON
 {
-  "busybox":  {"m2": $s2_bb, "m2a": $s2a_bb, "m4": $s4_bb, "common": $n_bb},
-  "csibe":    {"m2": $s2_cs, "m2a": $s2a_cs, "m4": $s4_cs, "common": $n_cs},
-  "coremark": {"m2": $s2_cm, "m2a": $s2a_cm, "m4": $s4_cm, "common": $n_cm}
+  "density": {
+    "csibe":    {"m2": $s2_cs, "m2a": $s2a_cs, "m4": $s4_cs, "common": $n_cs},
+    "coremark": {"m2": $s2_cm, "m2a": $s2a_cm, "m4": $s4_cm, "common": $n_cm}
+  },
+  "busybox": {"m2": $s2_bb, "m4": $s4_bb, "common": $n_bb}
 }
 JSON
 
