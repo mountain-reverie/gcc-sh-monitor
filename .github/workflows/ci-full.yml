@@ -70,6 +70,13 @@ jobs:
       - name: Run CoreMark size measurement
         run: scripts/run-coremark-size.sh
 
+      - name: Verify SH ISA flags (m2/m2a/m4) compile-to-object
+        continue-on-error: true
+        run: scripts/check-sh-isa-flags.sh
+
+      - name: Measure SH code density (m2/m2a/m4)
+        run: scripts/measure-sh-density.sh
+
       - name: Run LRA differential watchdog
         run: scripts/run-lra-corpus.sh
 
@@ -105,6 +112,7 @@ jobs:
             /tmp/metrics/busybox-musl-lto-sh4.json \
             /tmp/metrics/busybox-musl-fdpic-lto-sh4.json \
             /tmp/metrics/musl-sh4.json \
+            /tmp/metrics/sh-density.json \
             > metrics/all.json
           echo "Total metric entries: $(jq length metrics/all.json)"
 
