@@ -93,12 +93,31 @@ jobs:
       # m2/m2a/m4 — coverage QEMU (SH-4 only) and the compile-only density lane
       # can't provide. All three steps are non-fatal: a trunk build break degrades
       # to zero metrics rather than reddening the job.
+      # Reclaim disk before building a third gcc: the runner has ~14 GB free and
+      # three full gcc build trees overflow it (the first sh-sim CI run died with
+      # "No space left on device" as the sh-elf install finished). These trees are
+      # fully consumed by now — the sh4 tree (dejagnu ran in step 8), the FDPIC
+      # sidecar (its libgcc.a was already copied into the install), and the density
+      # multilib tree (density measured). Their installs/artifacts remain.
+      - name: Free disk before the sh-sim toolchain build
+        run: |
+          echo "before:"; df -h / 2>/dev/null | tail -1
+          rm -rf /tmp/gcc-build /tmp/gcc-build-fdpic /tmp/gcc-build-multilib
+          echo "after:";  df -h / 2>/dev/null | tail -1
+
       - name: Build sh-elf gcc for the simulator lane
         continue-on-error: true
         run: scripts/build-sh-elf-gcc.sh "${{ steps.meta.outputs.commit }}"
 
-      - name: Run sh-sim torture (execute + ieee, m2/m2a/m4)
+      # Bounded integer slice (GLOB) keeps the per-ISA torture run to a few minutes
+      # on the shared runner — the full ~1500-file suite x 3 ISAs is far too slow.
+      # ieee runs in full (small). timeout-minutes is a hard cap so this lane can
+      # never stall the whole job.
+      - name: Run sh-sim torture (execute slice + ieee, m2/m2a/m4)
         continue-on-error: true
+        timeout-minutes: 30
+        env:
+          GLOB: "2*.c"
         run: scripts/run-sh-sim.sh
 
       - name: Parse sh-sim results
