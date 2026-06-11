@@ -8,6 +8,14 @@ on:
     paths:
       - 'state/last-tested.json'
   workflow_dispatch:
+  # Re-run after the base image is rebuilt so lanes that depend on baked tooling
+  # (e.g. the sh-sim simulator at /opt/sh-elf) pick up the fresh :latest. This is
+  # the no-PAT way to chain: GITHUB_TOKEN-dispatched events don't start runs, and
+  # the sync PAT lacks the `workflow` scope. A failed rebuild would harmlessly
+  # re-run ci-full on the previous image; docker-rebuild rarely fails.
+  workflow_run:
+    workflows: ["docker-rebuild"]
+    types: [completed]
 
 permissions:
   contents: write
