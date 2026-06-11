@@ -1,0 +1,37 @@
+# THROWAWAY SPIKE (uncommitted) — DejaGnu board for bare-metal sh-elf binaries
+# executed under the binutils-gdb SH instruction-set simulator (sh-elf-run),
+# using newlib semihosting. No QEMU, no sysroot, no kernel.
+#
+# ISA is selected via multilib board variants, e.g.
+#   --target_board=sh-sim/-m2a       (single)
+#   --target_board=sh-sim\{-m2\}\{-m2a\}\{-m4\}   (all three in one run)
+#
+# Prereq: $PREFIX/bin (sh-elf-gcc, sh-elf-run) must be on PATH before runtest.
+
+# Use DejaGnu's generic simulator interface. sh-elf-run is a genuine DejaGnu-
+# style sim: the generic sim_load runs the ELF locally (no download / no remote
+# dir) and turns the program's exit status into the pass/fail result — exactly
+# newlib semihosting semantics. Pointing board_info `sim` at it is all that the
+# generic path needs (unlike the qemu board, which needs a custom load proc to
+# pass `-L sysroot`).
+load_generic_config "sim"
+# Allow ISA flags (-m2/-m2a/-m4) to be appended via /option board variants.
+process_multilib_options ""
+
+# The simulator binary the generic sim_load will invoke (resolved via PATH).
+set_board_info sim "sh-elf-run"
+
+# Installed bare-metal toolchain finds newlib + startfiles via its own specs,
+# so no sysroot and no -B are required.
+set_board_info compiler  "sh-elf-gcc"
+set_board_info cflags    ""
+set_board_info ldflags   ""
+
+# Bare-metal newlib: no shared libs, no dynamic loader, modest sim stack.
+set_board_info gcc,no_trampolines  1
+set_board_info gcc,stack_size      16384
+
+# Run locally via the standalone simulator (no ssh, no remote copy).
+set_board_info hostname  "localhost"
+set_board_info isremote  0
+set_board_info target_install {sh-elf}

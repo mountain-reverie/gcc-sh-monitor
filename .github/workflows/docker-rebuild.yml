@@ -49,3 +49,17 @@ jobs:
             ghcr.io/mountain-reverie/gcc-sh-base:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Re-run ci-full against the freshly built :latest image so lanes that
+      # depend on baked tooling (e.g. the sh-sim simulator at /opt/sh-elf) pick it
+      # up without a manual trigger. GITHUB_TOKEN cannot dispatch workflows, so use
+      # the same PAT the sync workflow uses. Non-fatal: if the PAT lacks the
+      # `workflow` scope, the image is still published and ci-full can be run by hand.
+      - name: Trigger ci-full on the refreshed image
+        if: success()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.DEPENDABOT_RECREATE_PAT }}
+        run: |
+          echo "Dispatching ci-full to re-run on gcc-sh-base:latest ..."
+          gh workflow run ci-full.yml --repo "${{ github.repository }}"

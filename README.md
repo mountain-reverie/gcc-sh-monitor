@@ -1,6 +1,7 @@
 # gcc-sh-monitor
 
 [![Dejagnu](https://mountain-reverie.github.io/gcc-sh-monitor/badge/dejagnu.svg)](https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/)
+[![sh-sim](https://mountain-reverie.github.io/gcc-sh-monitor/badge/sh-sim.svg)](https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/)
 [![CSiBE -Os](https://mountain-reverie.github.io/gcc-sh-monitor/badge/csibe.svg)](https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/)
 [![CoreMark .text](https://mountain-reverie.github.io/gcc-sh-monitor/badge/coremark.svg)](https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/)
 [![BusyBox](https://mountain-reverie.github.io/gcc-sh-monitor/badge/busybox.svg)](https://mountain-reverie.github.io/gcc-sh-monitor/benchmark/)

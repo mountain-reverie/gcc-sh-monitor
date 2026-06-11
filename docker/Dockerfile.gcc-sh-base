@@ -58,5 +58,17 @@ RUN sh4-linux-gnu-gcc --version \
 # Where vendored test suites will live in later increments.
 RUN mkdir -p /opt/test-suites
 
+# Commit-independent half of the sh-sim lane: bare-metal sh-elf binutils-gdb
+# (with the SH instruction-set simulator, sh-elf-run) + newlib, under /opt/sh-elf.
+# The matching gcc is built per-CI-run (scripts/build-sh-elf-gcc.sh) into this same
+# prefix so the sim executes the *tested* commit's SH-2/SH-2A/SH-4 codegen.
+COPY build-sh-elf-base.sh /tmp/build-sh-elf-base.sh
+RUN bash /tmp/build-sh-elf-base.sh && rm -f /tmp/build-sh-elf-base.sh
+
+# Sanity: simulator + newlib present and runnable.
+RUN /opt/sh-elf/bin/sh-elf-run --version >/dev/null 2>&1 || /opt/sh-elf/bin/sh-elf-run --help >/dev/null 2>&1 \
+ && test -f /opt/sh-elf/sh-elf/lib/libc.a \
+ && test -x /opt/sh-elf/bin/sh-elf-as
+
 WORKDIR /work
 CMD ["/bin/bash"]

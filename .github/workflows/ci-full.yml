@@ -80,6 +80,26 @@ jobs:
       - name: Measure SH code density (m2/m2a/m4)
         run: GCC=/tmp/gcc-multilib-install/bin/sh4-linux-gnu-gcc scripts/measure-sh-density.sh
 
+      # sh-sim lane: build the tested-commit sh-elf gcc into the baked /opt/sh-elf
+      # toolchain, then EXECUTE gcc.c-torture on the SH simulator (sh-elf-run) for
+      # m2/m2a/m4 — coverage QEMU (SH-4 only) and the compile-only density lane
+      # can't provide. All three steps are non-fatal: a trunk build break degrades
+      # to zero metrics rather than reddening the job.
+      - name: Build sh-elf gcc for the simulator lane
+        continue-on-error: true
+        run: scripts/build-sh-elf-gcc.sh "${{ steps.meta.outputs.commit }}"
+
+      - name: Run sh-sim torture (execute + ieee, m2/m2a/m4)
+        continue-on-error: true
+        run: scripts/run-sh-sim.sh
+
+      - name: Parse sh-sim results
+        if: always()
+        run: |
+          mkdir -p /tmp/metrics
+          python3 scripts/parse-sh-sim.py /tmp/sh-sim-out > /tmp/metrics/sh-sim.json
+          cat /tmp/metrics/sh-sim.json
+
       - name: Run LRA differential watchdog
         run: scripts/run-lra-corpus.sh
 
@@ -116,6 +136,7 @@ jobs:
             /tmp/metrics/busybox-musl-fdpic-lto-sh4.json \
             /tmp/metrics/musl-sh4.json \
             /tmp/metrics/sh-density.json \
+            /tmp/metrics/sh-sim.json \
             > metrics/all.json
           echo "Total metric entries: $(jq length metrics/all.json)"
 
@@ -288,6 +309,9 @@ jobs:
               curl -fsSL "https://img.shields.io/badge/${b}-build%20failing-red" \
                 -o "html/badge/${b}.svg"
             done
+            # sh-sim: literal dash in the label must be doubled for shields.io.
+            curl -fsSL "https://img.shields.io/badge/sh--sim-build%20failing-red" \
+              -o html/badge/sh-sim.svg
             exit 0
           fi
 
@@ -345,6 +369,26 @@ jobs:
           [ "$MLT" -eq 0 ] && ML_COLOR="red"
           curl -fsSL "https://img.shields.io/badge/musl-${MLT_KB}%20KB-${ML_COLOR}" \
             -o html/badge/musl.svg
+
+          # sh-sim badge — simulator execution status. The known FP sim limitation
+          # (compare-fp NaN/unordered) is already excluded from sh_sim_fail_count by
+          # parse-sh-sim.py, so "success" here means no *new* execution failures.
+          # pass==0 means the sh-elf build failed this run → red. ("sh-sim" has a
+          # literal dash, doubled to "sh--sim" for shields.io.)
+          SHSIM_FAIL=$(jq '[.[] | select(.name=="sh_sim_fail_count")][0].value' metrics/all.json)
+          SHSIM_PASS=$(jq '[.[] | select(.name=="sh_sim_pass_count")][0].value' metrics/all.json)
+          [[ "$SHSIM_FAIL" =~ ^[0-9]+$ ]] || { echo "::error::sh_sim_fail_count missing or non-numeric (got: $SHSIM_FAIL)"; exit 1; }
+          [[ "$SHSIM_PASS" =~ ^[0-9]+$ ]] || { echo "::error::sh_sim_pass_count missing or non-numeric (got: $SHSIM_PASS)"; exit 1; }
+          if [ "$SHSIM_PASS" -eq 0 ]; then
+            curl -fsSL "https://img.shields.io/badge/sh--sim-build%20failing-red" \
+              -o html/badge/sh-sim.svg
+          else
+            SHSIM_COLOR="green"; SHSIM_MSG="${SHSIM_PASS}%20pass"
+            if [ "$SHSIM_FAIL" -gt 0 ]; then SHSIM_COLOR="yellow"; SHSIM_MSG="${SHSIM_FAIL}%20fail"; fi
+            [ "$SHSIM_FAIL" -gt 5 ] && SHSIM_COLOR="red"
+            curl -fsSL "https://img.shields.io/badge/sh--sim-${SHSIM_MSG}-${SHSIM_COLOR}" \
+              -o html/badge/sh-sim.svg
+          fi
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
