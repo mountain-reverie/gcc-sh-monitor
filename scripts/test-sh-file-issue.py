@@ -75,6 +75,22 @@ def test_bound_but_no_culprit_notes_inconclusive():
     # and it should NOT claim the bound could not be established
     assert "could not be established" not in body.lower()
 
+SHSIM = dict(BASE,
+    failure_type="sh-sim",
+    failed_step="Run sh-sim torture (execute slice + ieee, m2/m2a/m4)",
+    regressed_tests=["m2a:gcc.c-torture/execute/foo.c -O2 execution test"])
+
+def test_sh_sim_title_names_test_and_culprit():
+    title = run(SHSIM, "--title").strip()
+    assert "SH CI regression" in title
+    assert "m2a:gcc.c-torture/execute/foo.c" in title
+    assert ("c" * 12) in title
+
+def test_sh_sim_body_lists_regressed_tests():
+    body = run(SHSIM, "--body")
+    assert "sh-sim execution regression" in body.lower()
+    assert "m2a:gcc.c-torture/execute/foo.c -O2 execution test" in body
+
 if __name__ == "__main__":
     tests = [v for k, v in globals().items() if k.startswith("test_")]
     failed = 0

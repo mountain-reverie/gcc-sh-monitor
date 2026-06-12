@@ -20,9 +20,9 @@ def _short(sha):
     return sha[:12] if sha else "?"
 
 def _what(r):
-    if r["failure_type"] == "dejagnu":
+    if r["failure_type"] in ("dejagnu", "sh-sim"):
         tests = r.get("regressed_tests") or []
-        head = tests[0] if tests else "dejagnu regression"
+        head = tests[0] if tests else f"{r['failure_type']} regression"
         extra = f" (+{len(tests) - 1} more)" if len(tests) > 1 else ""
         return f"{head}{extra}"
     return r.get("failed_step") or "build failure"
@@ -44,6 +44,11 @@ def body(r):
     lines.append("")
     if ft == "dejagnu":
         lines.append("New dejagnu test regression(s) (job stayed green, `.fail` non-empty):")
+        for t in r.get("regressed_tests") or []:
+            lines.append(f"- `{t}`")
+    elif ft == "sh-sim":
+        lines.append("New sh-sim execution regression(s) on the SH simulator "
+                     "(one `isa:test` per line):")
         for t in r.get("regressed_tests") or []:
             lines.append(f"- `{t}`")
     else:
