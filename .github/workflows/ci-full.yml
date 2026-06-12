@@ -176,6 +176,15 @@ jobs:
             /tmp/dejagnu-out/gcc.log.gz
           retention-days: 30
 
+      - name: Upload raw sh-sim artefacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sh-sim-${{ steps.meta.outputs.commit }}
+          path: /tmp/sh-sim-out/*.sum
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Stage LRA per-case results for the publish job
         run: cp /tmp/lra-results.json metrics/lra-results.json
 
