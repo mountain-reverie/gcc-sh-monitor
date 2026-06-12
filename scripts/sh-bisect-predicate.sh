@@ -12,7 +12,7 @@
 #
 # Environment:
 #   MONITOR_DIR  path to the gcc-sh-monitor checkout (scripts/ + boards/)
-#   OUT_DIR      dejagnu output dir (default: /tmp/dejagnu-out); gcc.sum read from here
+#   OUT_DIR      output dir (default: /tmp/dejagnu-out); dejagnu gcc.sum and sh-sim {execute,ieee}-<isa>.sum are read from here
 set -uo pipefail
 
 TYPE="${1:?usage: sh-bisect-predicate.sh <build|script|dejagnu> [arg]}"
@@ -22,6 +22,7 @@ OUT_DIR="${OUT_DIR:-/tmp/dejagnu-out}"
 export OUT_DIR
 
 sha="$(git rev-parse HEAD)"
+BISECT_SRC="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 build() { ( cd "$MONITOR_DIR" && scripts/build-gcc.sh "$sha" sh4-linux-gnu ); }
 
@@ -42,6 +43,26 @@ case "$TYPE" in
     while IFS= read -r t; do
       [ -z "$t" ] && continue
       if grep -qF "FAIL: $t" "$sum"; then exit 1; fi
+    done < "$ARG"
+    exit 0
+    ;;
+  sh-sim)
+    [ -f "$ARG" ] || { echo "regressed-tests file not found: $ARG" >&2; exit 125; }
+    # Build the sh-elf gcc at this commit into the baked /opt/sh-elf. Source is the
+    # bisect checkout (already at HEAD=$sha); build failure => skip.
+    ( cd "$MONITOR_DIR" && GCC_SRC_DIR="$BISECT_SRC" scripts/build-sh-elf-gcc.sh "$sha" ) || exit 125
+    rm -f "$OUT_DIR"/execute-*.sum "$OUT_DIR"/ieee-*.sum
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      tag="${line%% *}"          # "<isa>:<testpath>"
+      isa="${tag%%:*}"
+      tpath="${tag#*:}"
+      ( cd "$MONITOR_DIR" && ISAS="$isa" GLOB="${tpath##*/}" OUT_DIR="$OUT_DIR" \
+          scripts/run-sh-sim.sh ) || true
+      if grep -qF "FAIL: $tpath" "$OUT_DIR/execute-$isa.sum" 2>/dev/null \
+         || grep -qF "FAIL: $tpath" "$OUT_DIR/ieee-$isa.sum" 2>/dev/null; then
+        exit 1
+      fi
     done < "$ARG"
     exit 0
     ;;

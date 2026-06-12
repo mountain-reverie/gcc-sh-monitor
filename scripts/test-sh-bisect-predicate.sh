@@ -29,6 +29,32 @@ EOF
   chmod +x "$mon/scripts/run-dejagnu.sh"
 }
 
+mk_shsim_build() {  # $1 = exit code the stub sh-elf gcc build returns
+  cat > "$mon/scripts/build-sh-elf-gcc.sh" <<EOF
+#!/usr/bin/env bash
+exit $1
+EOF
+  chmod +x "$mon/scripts/build-sh-elf-gcc.sh"
+}
+
+mk_shsim_run() {  # $1 = a line written into \$OUT_DIR/execute-<ISAS>.sum
+  cat > "$mon/scripts/run-sh-sim.sh" <<EOF
+#!/usr/bin/env bash
+mkdir -p "\$OUT_DIR"
+printf '%s\n' "$1" > "\$OUT_DIR/execute-\${ISAS}.sum"
+EOF
+  chmod +x "$mon/scripts/run-sh-sim.sh"
+}
+
+mk_shsim_run_ieee() {  # $1 = a line written into $OUT_DIR/ieee-<ISAS>.sum
+  cat > "$mon/scripts/run-sh-sim.sh" <<EOF
+#!/usr/bin/env bash
+mkdir -p "\$OUT_DIR"
+printf '%s\n' "$1" > "\$OUT_DIR/ieee-\${ISAS}.sum"
+EOF
+  chmod +x "$mon/scripts/run-sh-sim.sh"
+}
+
 check() {  # $1 desc, $2 expected-exit, then runs pred with remaining args/env
   desc="$1"; want="$2"; shift 2
   ( cd "$root" && MONITOR_DIR="$mon" OUT_DIR="$out" "$pred" "$@" )
@@ -65,5 +91,29 @@ EOF
 chmod +x "$mon/scripts/run-dejagnu.sh"
 echo "gcc.target/sh/pr1.c (test for excess errors)" > "$root/regressed.txt"
 check "dejagnu-no-gccsum-skip" 125 dejagnu "$root/regressed.txt"
+
+# sh-sim: regressed test still FAILs -> bad(1)
+setup; mk_shsim_build 0; mk_shsim_run "FAIL: gcc.c-torture/execute/foo.c   -O2  execution test"
+printf 'm2a:gcc.c-torture/execute/foo.c -O2 execution test\n' > "$root/regressed.txt"
+check "shsim-still-failing-bad" 1 sh-sim "$root/regressed.txt"
+
+# sh-sim: now passing -> good(0)
+setup; mk_shsim_build 0; mk_shsim_run "PASS: gcc.c-torture/execute/foo.c   -O2  execution test"
+printf 'm2a:gcc.c-torture/execute/foo.c -O2 execution test\n' > "$root/regressed.txt"
+check "shsim-now-passing-good" 0 sh-sim "$root/regressed.txt"
+
+# sh-sim: build broken -> skip(125)
+setup; mk_shsim_build 1
+printf 'm2a:gcc.c-torture/execute/foo.c -O2 execution test\n' > "$root/regressed.txt"
+check "shsim-buildbroken-skip" 125 sh-sim "$root/regressed.txt"
+
+# sh-sim: missing regressed-tests file -> skip(125)
+setup; mk_shsim_build 0
+check "shsim-missing-file-skip" 125 sh-sim "$root/does-not-exist.txt"
+
+# sh-sim: regression only in the ieee suite -> bad(1)
+setup; mk_shsim_build 0; mk_shsim_run_ieee "FAIL: gcc.c-torture/execute/ieee/mzero.c   execution,  -O1"
+printf 'm4:gcc.c-torture/execute/ieee/mzero.c execution, -O1\n' > "$root/regressed.txt"
+check "shsim-ieee-failing-bad" 1 sh-sim "$root/regressed.txt"
 
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails failures"; exit 1; }
