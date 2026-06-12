@@ -115,11 +115,45 @@ jobs:
           fi
           echo "current=$(jq '.fail|length' cur.json), baseline=$(jq '.fail|length' base.json 2>/dev/null || echo 0), new=$(jq '.fail|length' failures.json)"
 
+      - name: Recompute sh-sim regression set (success path)
+        id: shsim
+        if: ${{ inputs.build_result == 'success' }}
+        env:
+          COMMIT: ${{ inputs.commit }}
+        run: |
+          # Mirror of the dejagnu delta, on the sh-sim sums. A real regression is
+          # a new execution FAIL vs the last green run; the known compare-fp sim
+          # gaps are dropped by extract-sh-sim-failures.py. Always writes
+          # sh-sim-failures.json so the Classify step's arg positions stay stable.
+          gh run download "$GITHUB_RUN_ID" -n "sh-sim-${COMMIT}" -D ss_cur 2>/dev/null || true
+          # sh-sim writes one .sum per (suite,ISA), so glob rather than a single known name.
+          if [ -d ss_cur ] && ls ss_cur/*.sum >/dev/null 2>&1; then
+            python3 scripts/extract-sh-sim-failures.py ss_cur "$COMMIT" > ss_cur.json
+          else
+            echo '{"fail": []}' > ss_cur.json
+          fi
+
+          python3 scripts/sh-lastgreen.py sh-sim > ss_bound.json || echo '{}' > ss_bound.json
+          gcommit=$(jq -r '.good_commit // ""' ss_bound.json)
+          grun=$(jq -r '.good_run_id // ""' ss_bound.json)
+          if [ -n "$grun" ] && [ -n "$gcommit" ]; then
+            gh run download "$grun" -n "sh-sim-${gcommit}" -D ss_base 2>/dev/null || true
+          fi
+          if [ -d ss_base ] && ls ss_base/*.sum >/dev/null 2>&1; then
+            python3 scripts/extract-sh-sim-failures.py ss_base "$gcommit" > ss_base.json
+            python3 scripts/sh-dejagnu-delta.py ss_cur.json ss_base.json > sh-sim-failures.json
+          else
+            echo "::notice::no last-green sh-sim baseline — suppressing sh-sim detection"
+            echo '{"fail": []}' > sh-sim-failures.json
+          fi
+          echo "sh-sim current=$(jq '.fail|length' ss_cur.json), new=$(jq '.fail|length' sh-sim-failures.json)"
+
       - name: Classify
         id: classify
         run: |
           args=("${{ inputs.build_result }}" "${{ steps.step.outputs.name }}")
           [ -f failures.json ] && args+=("failures.json")
+          [ -f sh-sim-failures.json ] && args+=("sh-sim-failures.json")
           python3 scripts/sh-regression-detect.py "${args[@]}" > detect.json
           cat detect.json
           echo "type=$(jq -r .failure_type detect.json)" >> "$GITHUB_OUTPUT"
@@ -195,6 +229,9 @@ jobs:
             arg=$(python3 scripts/sh-step-command.py "$step" || true)
             if [ -z "$arg" ]; then echo "no reproduce command for step '$step'"; echo "noarg=1" >> "$GITHUB_OUTPUT"; exit 0; fi
           elif [ "$FTYPE" = "dejagnu" ]; then
+            jq -r '.regressed_tests[]' detect.json > /tmp/regressed.txt
+            arg=/tmp/regressed.txt
+          elif [ "$FTYPE" = "sh-sim" ]; then
             jq -r '.regressed_tests[]' detect.json > /tmp/regressed.txt
             arg=/tmp/regressed.txt
           fi
