@@ -2,10 +2,10 @@
 """Classify an SH-lane CI outcome into a regression type for the auto-bisect.
 
 Usage:
-  sh-regression-detect.py <build_result> <failed_step> [<failures.json>]
+  sh-regression-detect.py <build_result> <failed_step> [<failures.json> [<sh-sim-failures.json>]]
 
 Emits JSON:
-  {"failure_type": "build|script|dejagnu|none",
+  {"failure_type": "build|script|dejagnu|sh-sim|none",
    "failed_step": "<step name or ''>",
    "regressed_tests": ["<path> <detail>", ...]}
 
@@ -13,6 +13,7 @@ Emits JSON:
 - script:  some other build-and-test step exited non-zero (smoke/size script).
 - dejagnu: the job succeeded but extract-failures.py reports new (non-stale)
            FAILs — a test regression that does not fail the job.
+- sh-sim:  no dejagnu regressions but the sh-sim torture run has new failures.
 - none:    SH is green (or run was cancelled/skipped).
 """
 import json
@@ -21,8 +22,9 @@ from pathlib import Path
 
 BUILD_STEP = "Build cross GCC"
 DEJAGNU_STEP = "Run dejagnu sh.exp"
+SHSIM_STEP = "Run sh-sim torture (execute slice + ieee, m2/m2a/m4)"
 
-def classify(build_result: str, failed_step: str, failures: dict | None) -> dict:
+def classify(build_result, failed_step, failures, sh_sim_failures=None):
     if build_result == "failure":
         if failed_step == BUILD_STEP:
             return {"failure_type": "build", "failed_step": failed_step, "regressed_tests": []}
@@ -32,18 +34,25 @@ def classify(build_result: str, failed_step: str, failures: dict | None) -> dict
         if fails:
             tests = [f"{e['path']} {e['detail']}".strip() for e in fails]
             return {"failure_type": "dejagnu", "failed_step": DEJAGNU_STEP, "regressed_tests": tests}
+        sh_sim_fails = (sh_sim_failures or {}).get("fail", [])
+        if sh_sim_fails:
+            tests = [f"{e['path']} {e['detail']}".strip() for e in sh_sim_fails]
+            return {"failure_type": "sh-sim", "failed_step": SHSIM_STEP, "regressed_tests": tests}
     return {"failure_type": "none", "failed_step": "", "regressed_tests": []}
 
 def main(argv):
-    if len(argv) not in (3, 4):
-        print("usage: sh-regression-detect.py <build_result> <failed_step> [failures.json]",
-              file=sys.stderr)
+    if len(argv) < 3 or len(argv) > 5:
+        print("usage: sh-regression-detect.py <build_result> <failed_step> "
+              "[dejagnu-failures.json [sh-sim-failures.json]]", file=sys.stderr)
         return 2
     build_result, failed_step = argv[1], argv[2]
-    failures = None
-    if len(argv) == 4 and build_result == "success":
-        failures = json.loads(Path(argv[3]).read_text())
-    print(json.dumps(classify(build_result, failed_step, failures)))
+    failures = sh_sim = None
+    if build_result == "success":
+        if len(argv) >= 4:
+            failures = json.loads(Path(argv[3]).read_text())
+        if len(argv) >= 5:
+            sh_sim = json.loads(Path(argv[4]).read_text())
+    print(json.dumps(classify(build_result, failed_step, failures, sh_sim)))
     return 0
 
 if __name__ == "__main__":
