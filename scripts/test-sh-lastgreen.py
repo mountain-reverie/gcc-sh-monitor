@@ -33,6 +33,11 @@ def test_returns_none_when_no_good_run():
     runs = [R(5, False, "bad"), R(4, False, "bad2")]
     assert pick_good_run(runs, "build", [], lambda r: True) is None
 
+def test_sh_sim_uses_first_green_run():
+    runs = [R(3, False, "c3"), R(2, True, "c2"), R(1, True, "c1")]
+    good = pick_good_run(runs, "sh-sim", [], lambda r: True)
+    assert good["run_id"] == 2, good
+
 if __name__ == "__main__":
     tests = [v for k, v in globals().items() if k.startswith("test_")]
     failed = 0
