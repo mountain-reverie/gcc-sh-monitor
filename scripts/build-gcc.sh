@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Clone gcc-mirror/gcc at $COMMIT and build a cross-compiler for $TARGET.
+# Clone a gcc repo (default gcc-mirror/gcc) at $COMMIT and build a
+# cross-compiler for $TARGET. $COMMIT may be a bare sha or a branch ref
+# (e.g. devel/sh-lra) in the repo named by GCC_REPO.
 #
 # Usage:
 #   build-gcc.sh <commit-sha> [<target>]
@@ -9,6 +11,7 @@
 # Each target has its own sysroot, build dir, and install dir.
 #
 # Environment overrides (rarely needed; defaults below are per-target):
+#   GCC_REPO      git repo URL to fetch from (default: https://github.com/gcc-mirror/gcc.git)
 #   GCC_SRC_DIR   git clone of gcc (default: /tmp/gcc-src — shared across targets)
 #   GCC_BUILD_DIR build tree (default: /tmp/gcc-build[-${TARGET}])
 #   GCC_PREFIX    install prefix (default: /tmp/gcc-install[-${TARGET}])
@@ -92,15 +95,20 @@ ccache --max-size=3G >/dev/null 2>&1 || true
 git config --global --add safe.directory "$GCC_SRC_DIR"
 git config --global --add safe.directory "$GCC_BUILD_DIR"
 
-# Fetch only the requested commit. Works even when COMMIT is not a ref tip
-# because GitHub's smart HTTP supports uploadpack.allowReachableSHA1InWant.
+# Source repo defaults to the upstream mirror; the sh-lra lane overrides it.
+GCC_REPO="${GCC_REPO:-https://github.com/gcc-mirror/gcc.git}"
+
+# Fetch only what we need. $COMMIT is normally a bare sha (works because
+# GitHub's smart HTTP allows fetch-by-sha); it may also be a branch name
+# (e.g. devel/sh-lra), in which case we fetch that ref.
 if [ ! -d "$GCC_SRC_DIR/.git" ]; then
   mkdir -p "$GCC_SRC_DIR"
   git -C "$GCC_SRC_DIR" init -q
-  git -C "$GCC_SRC_DIR" remote add origin https://github.com/gcc-mirror/gcc.git
+  git -C "$GCC_SRC_DIR" remote add origin "$GCC_REPO"
 fi
 git -C "$GCC_SRC_DIR" fetch --depth 1 origin "$COMMIT"
 git -C "$GCC_SRC_DIR" checkout -q FETCH_HEAD
+echo "build-gcc: $GCC_REPO @ $COMMIT -> $(git -C "$GCC_SRC_DIR" rev-parse HEAD)"
 
 # Clean contents without removing the directories themselves — they may be
 # bind-mounted from the host, in which case `rm -rf <mountpoint>` fails with
