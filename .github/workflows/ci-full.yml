@@ -130,88 +130,8 @@ jobs:
       # NOTE: sh-sim is NOT run against sh-lra — it needs a second /opt/sh-elf
       # install + a third GCC tree, which overflows the runner's ~14 GB. The
       # sh-lra correctness series comes from the Dejagnu run above.
-      - name: Resolve devel/sh-lra HEAD
-        id: shlra
-        run: |
-          SHA=$(git ls-remote https://github.com/olegendo/gcc.git devel/sh-lra | cut -f1)
-          [ -n "$SHA" ] || { echo "::error::could not resolve devel/sh-lra"; exit 1; }
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "sh-lra HEAD: $SHA"
-
-      - name: Build sh-lra cross GCC (sh4)
-        env:
-          GCC_REPO: https://github.com/olegendo/gcc.git
-          GCC_SRC_DIR: /tmp/gcc-src-sh-lra
-          GCC_BUILD_DIR: /tmp/gcc-build-sh-lra
-          GCC_PREFIX: /tmp/gcc-install-sh-lra
-        run: |
-          # sh-sim build tree is fully consumed by now (install already copied
-          # out) — free it to make room for the sh-lra tree on the ~14 GB runner.
-          rm -rf /tmp/sh-elf-gcc-build
-          df -h / | tail -1
-          scripts/build-gcc.sh "${{ steps.shlra.outputs.sha }}"
-          df -h / | tail -1
-
-      - name: Run CSiBE size measurements (sh-lra)
-        env:
-          GCC_PREFIX: /tmp/gcc-install-sh-lra
-          OUT_FILE: /tmp/metrics/csibe-sh4-lra.raw.json
-        run: |
-          scripts/run-csibe.sh
-          python3 scripts/suffix-metrics.py __lra \
-            < /tmp/metrics/csibe-sh4-lra.raw.json \
-            > /tmp/metrics/csibe-sh4-lra.json
-
-      - name: Measure SH code density (sh-lra, m2/m2a/m4)
-        env:
-          GCC: /tmp/gcc-install-sh-lra/bin/sh4-linux-gnu-gcc
-          OUT_FILE: /tmp/metrics/sh-density-lra.raw.json
-        run: |
-          scripts/measure-sh-density.sh
-          python3 scripts/suffix-metrics.py __lra \
-            < /tmp/metrics/sh-density-lra.raw.json \
-            > /tmp/metrics/sh-density-lra.json
-
       - name: Run LRA differential watchdog
         run: scripts/run-lra-corpus.sh
-
-      - name: Run LRA watchdog (sh-lra vs trunk)
-        env:
-          GCC_PREFIX: /tmp/gcc-install-sh-lra
-          REF_GCC: /tmp/gcc-install/bin/sh4-linux-gnu-gcc
-          METRICS_FILE: /tmp/metrics/lra-lra.raw.json
-          RESULTS_FILE: /tmp/lra-results-lra.json
-        run: |
-          scripts/run-lra-corpus.sh
-          python3 scripts/suffix-metrics.py __lra \
-            < /tmp/metrics/lra-lra.raw.json \
-            > /tmp/metrics/lra-lra.json
-
-      - name: Run dejagnu sh.exp (sh-lra)
-        continue-on-error: true
-        env:
-          GCC_PREFIX: /tmp/gcc-install-sh-lra
-          GCC_BUILD_DIR: /tmp/gcc-build-sh-lra
-          OUT_DIR: /tmp/dejagnu-out-sh-lra
-        run: scripts/run-dejagnu.sh
-
-      - name: Parse dejagnu results (sh-lra)
-        if: always()
-        run: |
-          set -o pipefail
-          if [ -f /tmp/dejagnu-out-sh-lra/gcc.sum ]; then
-            python3 scripts/parse-dejagnu.py /tmp/dejagnu-out-sh-lra/gcc.sum \
-              | python3 scripts/suffix-metrics.py __lra \
-              > /tmp/metrics/dejagnu-lra.json
-          else
-            echo "::warning::sh-lra dejagnu produced no gcc.sum — emitting empty metrics"
-            echo '[]' > /tmp/metrics/dejagnu-lra.json
-          fi
-          cat /tmp/metrics/dejagnu-lra.json
-
-      - name: Free sh-lra build tree
-        if: always()
-        run: rm -rf /tmp/gcc-build-sh-lra
 
       - name: Run BusyBox build + smoke + size
         run: scripts/run-busybox.sh
@@ -247,10 +167,6 @@ jobs:
             /tmp/metrics/musl-sh4.json \
             /tmp/metrics/sh-density.json \
             /tmp/metrics/sh-sim.json \
-            /tmp/metrics/csibe-sh4-lra.json \
-            /tmp/metrics/sh-density-lra.json \
-            /tmp/metrics/lra-lra.json \
-            /tmp/metrics/dejagnu-lra.json \
             > metrics/all.json
           echo "Total metric entries: $(jq length metrics/all.json)"
 
@@ -274,9 +190,6 @@ jobs:
 
       - name: Stage LRA per-case results for the publish job
         run: cp /tmp/lra-results.json metrics/lra-results.json
-
-      - name: Stage sh-lra LRA per-case results
-        run: cp /tmp/lra-results-lra.json metrics/lra-results-lra.json
 
       - name: Stash metrics for the publish job
         uses: actions/upload-artifact@v7
