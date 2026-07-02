@@ -285,6 +285,117 @@ jobs:
           path: metrics
           retention-days: 1
 
+  build-sh-lra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    container:
+      image: ghcr.io/mountain-reverie/gcc-sh-base:latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Restore ccache (sh-lra)
+        uses: actions/cache@v5
+        with:
+          path: /tmp/.ccache-sh-lra
+          key: ccache-sh-lra-${{ github.run_id }}
+          restore-keys: |
+            ccache-sh-lra-
+
+      - name: Resolve devel/sh-lra HEAD
+        id: shlra
+        run: |
+          SHA=$(git ls-remote https://github.com/olegendo/gcc.git devel/sh-lra | cut -f1)
+          [ -n "$SHA" ] || { echo "::error::could not resolve devel/sh-lra"; exit 1; }
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "sh-lra HEAD: $SHA"
+
+      - name: Build sh-lra cross GCC (sh4)
+        env:
+          GCC_REPO: https://github.com/olegendo/gcc.git
+          GCC_SRC_DIR: /tmp/gcc-src-sh-lra
+          GCC_BUILD_DIR: /tmp/gcc-build-sh-lra
+          GCC_PREFIX: /tmp/gcc-install-sh-lra
+          CCACHE_DIR: /tmp/.ccache-sh-lra
+        run: |
+          df -h / | tail -1
+          scripts/build-gcc.sh "${{ steps.shlra.outputs.sha }}"
+          df -h / | tail -1
+
+      - name: Run CSiBE size measurements (sh-lra)
+        env:
+          GCC_PREFIX: /tmp/gcc-install-sh-lra
+          OUT_FILE: /tmp/metrics/csibe-sh4-lra.raw.json
+        run: |
+          scripts/run-csibe.sh
+          python3 scripts/suffix-metrics.py __lra \
+            < /tmp/metrics/csibe-sh4-lra.raw.json \
+            > /tmp/metrics/csibe-sh4-lra.json
+
+      - name: Measure SH code density (sh-lra, m2/m2a/m4)
+        env:
+          GCC: /tmp/gcc-install-sh-lra/bin/sh4-linux-gnu-gcc
+          OUT_FILE: /tmp/metrics/sh-density-lra.raw.json
+        run: |
+          scripts/measure-sh-density.sh
+          python3 scripts/suffix-metrics.py __lra \
+            < /tmp/metrics/sh-density-lra.raw.json \
+            > /tmp/metrics/sh-density-lra.json
+
+      - name: Run LRA watchdog (sh-lra vs Debian)
+        env:
+          GCC_PREFIX: /tmp/gcc-install-sh-lra
+          METRICS_FILE: /tmp/metrics/lra-lra.raw.json
+          RESULTS_FILE: /tmp/lra-results-lra.json
+        run: |
+          scripts/run-lra-corpus.sh
+          python3 scripts/suffix-metrics.py __lra \
+            < /tmp/metrics/lra-lra.raw.json \
+            > /tmp/metrics/lra-lra.json
+
+      - name: Run dejagnu sh.exp (sh-lra)
+        continue-on-error: true
+        env:
+          GCC_PREFIX: /tmp/gcc-install-sh-lra
+          GCC_BUILD_DIR: /tmp/gcc-build-sh-lra
+          OUT_DIR: /tmp/dejagnu-out-sh-lra
+        run: scripts/run-dejagnu.sh
+
+      - name: Parse dejagnu results (sh-lra)
+        if: always()
+        run: |
+          set -o pipefail
+          mkdir -p /tmp/metrics
+          if [ -f /tmp/dejagnu-out-sh-lra/gcc.sum ]; then
+            python3 scripts/parse-dejagnu.py /tmp/dejagnu-out-sh-lra/gcc.sum \
+              | python3 scripts/suffix-metrics.py __lra \
+              > /tmp/metrics/dejagnu-lra.json
+          else
+            echo "::warning::sh-lra dejagnu produced no gcc.sum — emitting empty metrics"
+            echo '[]' > /tmp/metrics/dejagnu-lra.json
+          fi
+          cat /tmp/metrics/dejagnu-lra.json
+
+      - name: Merge sh-lra metrics
+        run: |
+          mkdir -p metrics
+          python3 scripts/merge-metrics.py \
+            /tmp/metrics/csibe-sh4-lra.json \
+            /tmp/metrics/sh-density-lra.json \
+            /tmp/metrics/lra-lra.json \
+            /tmp/metrics/dejagnu-lra.json \
+            > metrics/all-sh-lra.json
+          echo "sh-lra metric entries: $(jq length metrics/all-sh-lra.json)"
+
+      - name: Stage sh-lra LRA per-case results
+        run: cp /tmp/lra-results-lra.json metrics/lra-results-lra.json
+
+      - name: Stash sh-lra metrics for the publish job
+        uses: actions/upload-artifact@v7
+        with:
+          name: sh-lra-metrics
+          path: metrics
+          retention-days: 1
+
   sh-regression:
     needs: [build-and-test]
     if: ${{ always() }}
