@@ -104,6 +104,9 @@ GCC_REPO="${GCC_REPO:-https://github.com/gcc-mirror/gcc.git}"
 if [ ! -d "$GCC_SRC_DIR/.git" ]; then
   mkdir -p "$GCC_SRC_DIR"
   git -C "$GCC_SRC_DIR" init -q
+  # GCC_REPO only takes effect here, at init — the remote is set once for a
+  # fresh $GCC_SRC_DIR. A reused/pre-existing src dir keeps its original
+  # origin regardless of what GCC_REPO is set to on this invocation.
   git -C "$GCC_SRC_DIR" remote add origin "$GCC_REPO"
 fi
 git -C "$GCC_SRC_DIR" fetch --depth 1 origin "$COMMIT"
