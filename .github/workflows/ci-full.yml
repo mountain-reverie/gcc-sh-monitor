@@ -145,6 +145,9 @@ jobs:
           GCC_BUILD_DIR: /tmp/gcc-build-sh-lra
           GCC_PREFIX: /tmp/gcc-install-sh-lra
         run: |
+          # sh-sim build tree is fully consumed by now (install already copied
+          # out) — free it to make room for the sh-lra tree on the ~14 GB runner.
+          rm -rf /tmp/sh-elf-gcc-build
           df -h / | tail -1
           scripts/build-gcc.sh "${{ steps.shlra.outputs.sha }}"
           df -h / | tail -1
@@ -195,12 +198,19 @@ jobs:
       - name: Parse dejagnu results (sh-lra)
         if: always()
         run: |
-          python3 scripts/parse-dejagnu.py /tmp/dejagnu-out-sh-lra/gcc.sum \
-            | python3 scripts/suffix-metrics.py __lra \
-            > /tmp/metrics/dejagnu-lra.json
+          set -o pipefail
+          if [ -f /tmp/dejagnu-out-sh-lra/gcc.sum ]; then
+            python3 scripts/parse-dejagnu.py /tmp/dejagnu-out-sh-lra/gcc.sum \
+              | python3 scripts/suffix-metrics.py __lra \
+              > /tmp/metrics/dejagnu-lra.json
+          else
+            echo "::warning::sh-lra dejagnu produced no gcc.sum — emitting empty metrics"
+            echo '[]' > /tmp/metrics/dejagnu-lra.json
+          fi
           cat /tmp/metrics/dejagnu-lra.json
 
       - name: Free sh-lra build tree
+        if: always()
         run: rm -rf /tmp/gcc-build-sh-lra
 
       - name: Run BusyBox build + smoke + size
