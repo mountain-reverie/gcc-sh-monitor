@@ -127,6 +127,25 @@ jobs:
           python3 scripts/parse-sh-sim.py /tmp/sh-sim-out > /tmp/metrics/sh-sim.json
           cat /tmp/metrics/sh-sim.json
 
+      - name: Resolve devel/sh-lra HEAD
+        id: shlra
+        run: |
+          SHA=$(git ls-remote https://github.com/olegendo/gcc.git devel/sh-lra | cut -f1)
+          [ -n "$SHA" ] || { echo "::error::could not resolve devel/sh-lra"; exit 1; }
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "sh-lra HEAD: $SHA"
+
+      - name: Build sh-lra cross GCC (sh4)
+        env:
+          GCC_REPO: https://github.com/olegendo/gcc.git
+          GCC_SRC_DIR: /tmp/gcc-src-sh-lra
+          GCC_BUILD_DIR: /tmp/gcc-build-sh-lra
+          GCC_PREFIX: /tmp/gcc-install-sh-lra
+        run: |
+          df -h / | tail -1
+          scripts/build-gcc.sh "${{ steps.shlra.outputs.sha }}"
+          df -h / | tail -1
+
       - name: Run LRA differential watchdog
         run: scripts/run-lra-corpus.sh
 
