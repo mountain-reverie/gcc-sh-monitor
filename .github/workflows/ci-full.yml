@@ -127,9 +127,6 @@ jobs:
           python3 scripts/parse-sh-sim.py /tmp/sh-sim-out > /tmp/metrics/sh-sim.json
           cat /tmp/metrics/sh-sim.json
 
-      # NOTE: sh-sim is NOT run against sh-lra — it needs a second /opt/sh-elf
-      # install + a third GCC tree, which overflows the runner's ~14 GB. The
-      # sh-lra correctness series comes from the Dejagnu run above.
       - name: Run LRA differential watchdog
         run: scripts/run-lra-corpus.sh
 
@@ -259,12 +256,16 @@ jobs:
           GCC_PREFIX: /tmp/gcc-install-sh-lra
           METRICS_FILE: /tmp/metrics/lra-lra.raw.json
           RESULTS_FILE: /tmp/lra-results-lra.json
+          COMMIT: ${{ steps.shlra.outputs.sha }}
         run: |
           scripts/run-lra-corpus.sh
           python3 scripts/suffix-metrics.py __lra \
             < /tmp/metrics/lra-lra.raw.json \
             > /tmp/metrics/lra-lra.json
 
+      # NOTE: sh-sim is NOT run against sh-lra — it needs a second /opt/sh-elf
+      # install + a third GCC tree, which overflows the runner's disk budget.
+      # The sh-lra correctness series comes from this Dejagnu run instead.
       - name: Run dejagnu sh.exp (sh-lra)
         continue-on-error: true
         env:
