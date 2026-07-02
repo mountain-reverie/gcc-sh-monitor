@@ -18,11 +18,21 @@
       </thead>
       <tbody id="lra-body"></tbody>
     </table>
+
+    <h2>sh-lra branch (vs Debian)</h2>
+    <p id="lra-shlra-summary" class="muted">Loading…</p>
+    <table id="lra-shlra-table" class="lra">
+      <thead>
+        <tr id="lra-shlra-head"><th>Case</th></tr>
+      </thead>
+      <tbody id="lra-shlra-body"></tbody>
+    </table>
   </main>
 
   <footer>
     <p>
       Raw: <a href="lra-results.json">lra-results.json</a> ·
+      <a href="lra-results-lra.json">lra-results-lra.json</a> ·
       <a href="https://github.com/mountain-reverie/gcc-sh-monitor/tree/main/lra-corpus">corpus source</a> ·
       <a href="https://github.com/mountain-reverie/gcc-sh-monitor">repo</a>
     </p>
@@ -33,18 +43,38 @@
 
     fetch("lra-results.json", { cache: "no-cache" })
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then(render)
+      .then(data => render(data, {
+        summaryEl: document.getElementById("summary"),
+        headEl: document.getElementById("lra-head"),
+        bodyEl: document.getElementById("lra-body"),
+        commitBaseUrl: "https://github.com/gcc-mirror/gcc/commit/",
+        summaryPrefix: "From upstream commit",
+      }))
       .catch(_ => {
         document.getElementById("summary").textContent =
           "No LRA results published yet.";
       });
 
-    function render(data) {
-      const summary = document.getElementById("summary");
+    fetch("lra-results-lra.json", { cache: "no-cache" })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => render(data, {
+        summaryEl: document.getElementById("lra-shlra-summary"),
+        headEl: document.getElementById("lra-shlra-head"),
+        bodyEl: document.getElementById("lra-shlra-body"),
+        commitBaseUrl: "https://github.com/olegendo/gcc/commit/",
+        summaryPrefix: "From Oleg's devel/sh-lra branch commit",
+      }))
+      .catch(_ => {
+        document.getElementById("lra-shlra-summary").textContent =
+          "No sh-lra LRA results yet.";
+      });
+
+    function render(data, target) {
+      const { summaryEl, headEl, bodyEl, commitBaseUrl, summaryPrefix } = target;
       const shortCommit = data.commit.slice(0, 12);
-      summary.innerHTML =
-        `From upstream commit <a href="https://github.com/gcc-mirror/gcc/commit/${data.commit}"><code>${shortCommit}</code></a>` +
-        `, recorded ${data.date}. ` +
+      summaryEl.innerHTML =
+        `${summaryPrefix} <a href="${commitBaseUrl}${data.commit}"><code>${shortCommit}</code></a>` +
+        `, recorded ${data.date}, compared vs the Debian reference. ` +
         `<strong>${data.totals.diverged}</strong> diverged of ${data.totals.total} tuples ` +
         `(<strong>${data.totals.current_ice}</strong> ICE in current).`;
 
@@ -54,15 +84,13 @@
       const opts = Array.from(optSet).sort();
 
       // Head row.
-      const head = document.getElementById("lra-head");
       for (const opt of opts) {
         const th = document.createElement("th");
         th.textContent = "-" + opt;
-        head.appendChild(th);
+        headEl.appendChild(th);
       }
 
       // Body rows.
-      const body = document.getElementById("lra-body");
       for (const c of data.cases) {
         const tr = document.createElement("tr");
         const nameCell = document.createElement("td");
@@ -88,7 +116,7 @@
           }
           tr.appendChild(cell);
         }
-        body.appendChild(tr);
+        bodyEl.appendChild(tr);
       }
     }
 
