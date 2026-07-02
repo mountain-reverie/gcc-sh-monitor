@@ -319,7 +319,7 @@ jobs:
     secrets: inherit
 
   publish:
-    needs: [build-and-test, bench-multi]
+    needs: [build-and-test, bench-multi, build-sh-lra]
     # Publish on partial success: if any build/bench lane failed, still deploy
     # so the working architectures keep advancing. Each failed arch contributes
     # no metrics this run, so its series simply stops at its last good commit.
@@ -346,6 +346,13 @@ jobs:
         with:
           name: metrics-multi
           path: metrics-multi
+
+      - name: Fetch sh-lra metrics
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: sh-lra-metrics
+          path: metrics-sh-lra
 
       - name: Fetch dejagnu sum file
         uses: actions/download-artifact@v8
@@ -402,6 +409,15 @@ jobs:
           fi
           cp metrics/lra-results.json html/lra/lra-results.json
 
+      - name: Stage sh-lra LRA results into html/lra/
+        run: |
+          mkdir -p html/lra
+          if [ ! -f metrics-sh-lra/lra-results-lra.json ]; then
+            echo "::warning::lra-results-lra.json missing — sh-lra LRA panel will show no data"
+            exit 0
+          fi
+          cp metrics-sh-lra/lra-results-lra.json html/lra/lra-results-lra.json
+
       - name: Migrate historical sh4-only metric names
         run: |
           if [ -f html/benchmark/benchmark-data.json ]; then
@@ -421,6 +437,7 @@ jobs:
           python3 scripts/merge-metrics.py --skip-missing \
             metrics/all.json \
             metrics-multi/all-multi.json \
+            metrics-sh-lra/all-sh-lra.json \
             > metrics/combined.json
           COUNT=$(jq length metrics/combined.json)
           echo "Combined entries: $COUNT"
