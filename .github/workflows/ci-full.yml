@@ -146,6 +146,26 @@ jobs:
           scripts/build-gcc.sh "${{ steps.shlra.outputs.sha }}"
           df -h / | tail -1
 
+      - name: Run CSiBE size measurements (sh-lra)
+        env:
+          GCC_PREFIX: /tmp/gcc-install-sh-lra
+          OUT_FILE: /tmp/metrics/csibe-sh4-lra.raw.json
+        run: |
+          scripts/run-csibe.sh
+          python3 scripts/suffix-metrics.py __lra \
+            < /tmp/metrics/csibe-sh4-lra.raw.json \
+            > /tmp/metrics/csibe-sh4-lra.json
+
+      - name: Measure SH code density (sh-lra, m2/m2a/m4)
+        env:
+          GCC: /tmp/gcc-install-sh-lra/bin/sh4-linux-gnu-gcc
+          OUT_FILE: /tmp/metrics/sh-density-lra.raw.json
+        run: |
+          scripts/measure-sh-density.sh
+          python3 scripts/suffix-metrics.py __lra \
+            < /tmp/metrics/sh-density-lra.raw.json \
+            > /tmp/metrics/sh-density-lra.json
+
       - name: Run LRA differential watchdog
         run: scripts/run-lra-corpus.sh
 
@@ -183,6 +203,8 @@ jobs:
             /tmp/metrics/musl-sh4.json \
             /tmp/metrics/sh-density.json \
             /tmp/metrics/sh-sim.json \
+            /tmp/metrics/csibe-sh4-lra.json \
+            /tmp/metrics/sh-density-lra.json \
             > metrics/all.json
           echo "Total metric entries: $(jq length metrics/all.json)"
 
