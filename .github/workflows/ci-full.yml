@@ -127,6 +127,9 @@ jobs:
           python3 scripts/parse-sh-sim.py /tmp/sh-sim-out > /tmp/metrics/sh-sim.json
           cat /tmp/metrics/sh-sim.json
 
+      # NOTE: sh-sim is NOT run against sh-lra — it needs a second /opt/sh-elf
+      # install + a third GCC tree, which overflows the runner's ~14 GB. The
+      # sh-lra correctness series comes from the Dejagnu run above.
       - name: Resolve devel/sh-lra HEAD
         id: shlra
         run: |
@@ -181,6 +184,25 @@ jobs:
             < /tmp/metrics/lra-lra.raw.json \
             > /tmp/metrics/lra-lra.json
 
+      - name: Run dejagnu sh.exp (sh-lra)
+        continue-on-error: true
+        env:
+          GCC_PREFIX: /tmp/gcc-install-sh-lra
+          GCC_BUILD_DIR: /tmp/gcc-build-sh-lra
+          OUT_DIR: /tmp/dejagnu-out-sh-lra
+        run: scripts/run-dejagnu.sh
+
+      - name: Parse dejagnu results (sh-lra)
+        if: always()
+        run: |
+          python3 scripts/parse-dejagnu.py /tmp/dejagnu-out-sh-lra/gcc.sum \
+            | python3 scripts/suffix-metrics.py __lra \
+            > /tmp/metrics/dejagnu-lra.json
+          cat /tmp/metrics/dejagnu-lra.json
+
+      - name: Free sh-lra build tree
+        run: rm -rf /tmp/gcc-build-sh-lra
+
       - name: Run BusyBox build + smoke + size
         run: scripts/run-busybox.sh
 
@@ -218,6 +240,7 @@ jobs:
             /tmp/metrics/csibe-sh4-lra.json \
             /tmp/metrics/sh-density-lra.json \
             /tmp/metrics/lra-lra.json \
+            /tmp/metrics/dejagnu-lra.json \
             > metrics/all.json
           echo "Total metric entries: $(jq length metrics/all.json)"
 
