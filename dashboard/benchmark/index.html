@@ -78,6 +78,21 @@
     //   FDPIC: busybox_musl_fdpic[_lto]_* collapse to a single chart whose two
     //   series are the LTO variants (fdpic vs fdpic +LTO) — arch is always sh4.
     function resolve(name) {
+      // sh-lra branch metrics carry a trailing "__lra". Peel it first, resolve
+      // the remainder exactly as the trunk metric would, then override the
+      // series so the sh-lra line lands in the SAME chart as trunk.
+      if (name.endsWith("__lra")) {
+        const trunk = resolve(name.slice(0, -"__lra".length));
+        return {
+          chartBase: trunk.chartBase,
+          seriesKey: trunk.seriesKey === "_" ? "lra"
+                   : `${trunk.seriesKey}-lra`,
+          label: `${trunk.label} (sh-lra)`,
+          color: trunk.color,      // same hue as its trunk sibling
+          order: trunk.order + 100, // sort sh-lra series after all trunk series
+          dashed: true,
+        };
+      }
       const { base, arch } = splitArch(name);
       if (base.includes("_fdpic")) {
         const lto = base.includes("_fdpic_lto");
@@ -130,9 +145,9 @@
     const byBase = {};
     for (const [name, points] of Object.entries(byMetric)) {
       points.sort((a, b) => a.x - b.x);
-      const { chartBase, seriesKey, label, color, order } = resolve(name);
+      const { chartBase, seriesKey, label, color, order, dashed } = resolve(name);
       if (!byBase[chartBase]) byBase[chartBase] = {};
-      byBase[chartBase][seriesKey] = { points, label, color, order };
+      byBase[chartBase][seriesKey] = { points, label, color, order, dashed };
     }
 
     for (const base of Object.keys(byBase).sort()) {
@@ -155,6 +170,7 @@
         data: s.points,
         borderColor: s.color,
         backgroundColor: s.color + "22",
+        borderDash: s.dashed ? [5, 4] : [],
         tension: 0.1,
         pointRadius: 4,
       }));
