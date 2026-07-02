@@ -169,6 +169,18 @@ jobs:
       - name: Run LRA differential watchdog
         run: scripts/run-lra-corpus.sh
 
+      - name: Run LRA watchdog (sh-lra vs trunk)
+        env:
+          GCC_PREFIX: /tmp/gcc-install-sh-lra
+          REF_GCC: /tmp/gcc-install/bin/sh4-linux-gnu-gcc
+          METRICS_FILE: /tmp/metrics/lra-lra.raw.json
+          RESULTS_FILE: /tmp/lra-results-lra.json
+        run: |
+          scripts/run-lra-corpus.sh
+          python3 scripts/suffix-metrics.py __lra \
+            < /tmp/metrics/lra-lra.raw.json \
+            > /tmp/metrics/lra-lra.json
+
       - name: Run BusyBox build + smoke + size
         run: scripts/run-busybox.sh
 
@@ -205,6 +217,7 @@ jobs:
             /tmp/metrics/sh-sim.json \
             /tmp/metrics/csibe-sh4-lra.json \
             /tmp/metrics/sh-density-lra.json \
+            /tmp/metrics/lra-lra.json \
             > metrics/all.json
           echo "Total metric entries: $(jq length metrics/all.json)"
 
@@ -228,6 +241,9 @@ jobs:
 
       - name: Stage LRA per-case results for the publish job
         run: cp /tmp/lra-results.json metrics/lra-results.json
+
+      - name: Stage sh-lra LRA per-case results
+        run: cp /tmp/lra-results-lra.json metrics/lra-results-lra.json
 
       - name: Stash metrics for the publish job
         uses: actions/upload-artifact@v7
