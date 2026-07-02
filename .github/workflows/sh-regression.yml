@@ -41,7 +41,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       LABEL: sh-ci-regression
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Mark workspace safe for git
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -194,7 +194,7 @@ jobs:
       # --- Bisect --------------------------------------------------------
       - name: Restore ccache (warm SH builds)
         if: ${{ steps.classify.outputs.type != 'none' && steps.dedup.outputs.open == '' && steps.bound.outputs.good != '' }}
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: /tmp/.ccache
           key: ccache-sh4-${{ inputs.commit }}

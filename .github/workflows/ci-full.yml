@@ -37,14 +37,14 @@ jobs:
     outputs:
       commit: ${{ steps.meta.outputs.commit }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Read tested commit
         id: meta
         run: echo "commit=$(jq -r .commit state/last-tested.json)" >> "$GITHUB_OUTPUT"
 
       - name: Restore ccache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: /tmp/.ccache
           key: ccache-sh4-${{ steps.meta.outputs.commit }}
@@ -52,7 +52,7 @@ jobs:
             ccache-sh4-
 
       - name: Restore GCC source clone
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: /tmp/gcc-src
           key: gcc-src-${{ steps.meta.outputs.commit }}
@@ -201,10 +201,10 @@ jobs:
     container:
       image: ghcr.io/mountain-reverie/gcc-sh-base:latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Restore ccache (sh-lra)
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: /tmp/.ccache-sh-lra
           key: ccache-sh-lra-${{ github.run_id }}
@@ -327,7 +327,7 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           token: ${{ secrets.DEPENDABOT_RECREATE_PAT }}
 
@@ -575,14 +575,14 @@ jobs:
     container:
       image: ghcr.io/mountain-reverie/gcc-sh-base:latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Read tested commit
         id: meta
         run: echo "commit=$(jq -r .commit state/last-tested.json)" >> "$GITHUB_OUTPUT"
 
       - name: Restore ccache (arm)
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: /tmp/.ccache
           key: ccache-arm-${{ steps.meta.outputs.commit }}
@@ -590,7 +590,7 @@ jobs:
             ccache-arm-
 
       - name: Restore GCC source clone (shared across targets)
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: /tmp/gcc-src
           key: gcc-src-${{ steps.meta.outputs.commit }}
@@ -613,14 +613,14 @@ jobs:
     container:
       image: ghcr.io/mountain-reverie/gcc-sh-base:latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Read tested commit
         id: meta
         run: echo "commit=$(jq -r .commit state/last-tested.json)" >> "$GITHUB_OUTPUT"
 
       - name: Restore ccache (x86)
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: /tmp/.ccache
           key: ccache-x86-${{ steps.meta.outputs.commit }}
@@ -628,7 +628,7 @@ jobs:
             ccache-x86-
 
       - name: Restore GCC source clone (shared across targets)
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: /tmp/gcc-src
           key: gcc-src-${{ steps.meta.outputs.commit }}
@@ -653,14 +653,14 @@ jobs:
     container:
       image: ghcr.io/mountain-reverie/gcc-sh-base:latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Read tested commit
         id: meta
         run: echo "commit=$(jq -r .commit state/last-tested.json)" >> "$GITHUB_OUTPUT"
 
       - name: Restore ccache (riscv32)
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: /tmp/.ccache
           key: ccache-riscv32-${{ steps.meta.outputs.commit }}
@@ -668,7 +668,7 @@ jobs:
             ccache-riscv32-
 
       - name: Restore GCC source clone (shared across targets)
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: /tmp/gcc-src
           key: gcc-src-${{ steps.meta.outputs.commit }}
@@ -698,7 +698,7 @@ jobs:
     # cleanly when their install is missing.
     if: ${{ !cancelled() }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Read tested commit
         id: meta
