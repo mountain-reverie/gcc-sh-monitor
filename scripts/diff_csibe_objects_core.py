@@ -77,5 +77,5 @@ def diff_totals(trunk, lra):
     for k in keys:
         tv, lv = trunk.get(k, 0), lra.get(k, 0)
         rows.append((k, lv - tv, tv, lv))
-    rows.sort(key=lambda r: r[1], reverse=True)
+    rows.sort(key=lambda r: (-r[1], r[0]))
     return rows

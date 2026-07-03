@@ -53,10 +53,17 @@ def test_diff_totals_ranks_and_handles_missing():
     assert ("gone", -30, 30, 0) in d
     assert ("p2", 0, 50, 50) in d
 
+def test_diff_totals_tie_break_is_deterministic():
+    trunk = {"zebra": 10, "alpha": 10, "mango": 10}
+    lra   = {"zebra": 15, "alpha": 15, "mango": 15}  # all Δ=+5
+    d = diff_totals(trunk, lra)
+    assert [r[0] for r in d] == ["alpha", "mango", "zebra"]
+
 if __name__ == "__main__":
     test_parse_size_sysv()
     test_code_bytes_sums_text_rodata_data_only()
     test_parse_nm_sizes_skips_sizeless()
     test_parse_nm_sizes_realistic_widths()
     test_diff_totals_ranks_and_handles_missing()
+    test_diff_totals_tie_break_is_deterministic()
     print("ok")

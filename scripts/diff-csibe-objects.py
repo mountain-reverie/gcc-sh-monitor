@@ -104,20 +104,25 @@ def main(argv):
     l_tot = {p: project_code_bytes(pfx, o) for p, o in lra.items()}
     ranked = diff_totals(t_tot, l_tot)
 
-    projects = [a.project] if a.project else [p for p, d, *_ in ranked if d != 0][:a.top]
+    if a.project:
+        if a.project not in trunk and a.project not in lra:
+            print(f"warning: project '{a.project}' not found in either tree", file=sys.stderr)
+        projects = [a.project]
+    else:
+        projects = [p for p, d, *_ in ranked if d != 0][:a.top]
 
     # summary.md
     lines = [f"# CSiBE size diff (trunk vs sh-lra), -{a.opt}", "",
              f"Total code bytes: trunk={sum(t_tot.values())} "
              f"sh-lra={sum(l_tot.values())} "
              f"Δ={sum(l_tot.values())-sum(t_tot.values()):+}", "",
-             "| project | trunk | sh-lra | Δ | report |",
-             "|---|--:|--:|--:|---|"]
+             "| project | trunk | sh-lra | Δ |",
+             "|---|--:|--:|--:|"]
     for p, d, tv, lv in ranked:
         if d == 0:
             continue
         link = f"[{p}]({p}/report.md)" if p in projects else p
-        lines.append(f"| {link} | {tv} | {lv} | {d:+} |  |")
+        lines.append(f"| {link} | {tv} | {lv} | {d:+} |")
     (out / "summary.md").write_text("\n".join(lines) + "\n")
 
     # Per-project drill-down.
