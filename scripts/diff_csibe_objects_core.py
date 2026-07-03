@@ -43,6 +43,11 @@ def parse_nm_sizes(text):
             continue
         try:
             if len(parts) >= 4:
+                # Common case: "addr size type name". This is width-independent
+                # since size is always the 2nd whitespace-delimited field,
+                # regardless of hex column width (e.g. real sh4-linux-gnu-nm
+                # output). Only the rarer 3-token blank-addr case below needs
+                # leading-whitespace disambiguation.
                 size = int(parts[1], 16)  # addr, size, type, name
             elif len(parts) == 3:
                 # Ambiguous: could be "<size> <type> <name>" (blank addr
