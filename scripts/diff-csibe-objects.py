@@ -17,13 +17,24 @@ from diff_csibe_objects_core import (
 )
 
 
+_warned_cmds = set()
+
+
 def run(tool_prefix, tool, *args):
     """Run <prefix><tool> <args...> and return stdout (empty string on failure)."""
+    cmd = [f"{tool_prefix}{tool}", *args]
     try:
-        return subprocess.run([f"{tool_prefix}{tool}", *args],
-                              capture_output=True, text=True, check=False).stdout
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     except FileNotFoundError:
         sys.exit(f"error: {tool_prefix}{tool} not found (set --tool-prefix)")
+    if proc.returncode != 0:
+        cmd_key = " ".join(cmd)
+        if cmd_key not in _warned_cmds:
+            _warned_cmds.add(cmd_key)
+            stderr_first_line = (proc.stderr or "").splitlines()[0] if proc.stderr else ""
+            print(f"warning: {cmd_key} exited {proc.returncode}: {stderr_first_line}",
+                  file=sys.stderr)
+    return proc.stdout
 
 
 def objects_for(root, opt):
@@ -62,13 +73,14 @@ def disasm_symbol(prefix, abs_path, sym):
     return run(prefix, "objdump", "-d", f"--disassemble={sym}", "-l", abs_path)
 
 
-def find_object_with_symbol(prefix, objs, sym):
-    """Return the abs path of the object defining `sym`, or None."""
+def symbol_object_index(prefix, objs):
+    """Return {symbol: abs_path} for the first object defining each symbol."""
+    index = {}
     for abs_path in objs.values():
-        if sym in parse_nm_sizes(
+        for sym in parse_nm_sizes(
                 run(prefix, "nm", "--print-size", "--size-sort", abs_path)):
-            return abs_path
-    return None
+            index.setdefault(sym, abs_path)
+    return index
 
 
 def main(argv):
@@ -112,22 +124,23 @@ def main(argv):
     for p in projects:
         t_objs, l_objs = trunk.get(p, {}), lra.get(p, {})
         t_syms, l_syms = symbol_sizes(pfx, t_objs), symbol_sizes(pfx, l_objs)
+        t_index, l_index = symbol_object_index(pfx, t_objs), symbol_object_index(pfx, l_objs)
         sym_rows = [r for r in diff_totals(t_syms, l_syms) if r[1] != 0]
+        top = sym_rows[:a.top]
         rep = [f"# {p} — symbol size diff (-{a.opt})", "",
                "| symbol | trunk | sh-lra | Δ |", "|---|--:|--:|--:|"]
-        for sym, d, tv, lv in sym_rows[:a.top]:
+        for sym, d, tv, lv in top:
             rep.append(f"| `{sym}` | {tv} | {lv} | {d:+} |")
         rep.append("")
         # Disassembly of the top movers, both sides.
-        for sym, d, tv, lv in sym_rows[:a.top]:
+        for sym, d, tv, lv in top:
             if d <= 0:
                 continue
+            t_abs, l_abs = t_index.get(sym), l_index.get(sym)
             rep += [f"## `{sym}` (Δ{d:+})", "", "### trunk", "```",
-                    (disasm_symbol(pfx, find_object_with_symbol(pfx, t_objs, sym) or "", sym)
-                     if find_object_with_symbol(pfx, t_objs, sym) else "(absent)").rstrip(),
+                    (disasm_symbol(pfx, t_abs, sym) if t_abs else "(absent)").rstrip(),
                     "```", "### sh-lra", "```",
-                    (disasm_symbol(pfx, find_object_with_symbol(pfx, l_objs, sym) or "", sym)
-                     if find_object_with_symbol(pfx, l_objs, sym) else "(absent)").rstrip(),
+                    (disasm_symbol(pfx, l_abs, sym) if l_abs else "(absent)").rstrip(),
                     "```", ""]
         (out / p).mkdir(parents=True, exist_ok=True)
         (out / p / "report.md").write_text("\n".join(rep) + "\n")
