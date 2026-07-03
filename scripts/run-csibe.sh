@@ -15,6 +15,8 @@
 #   GCC_PREFIX     install dir (default: /tmp/gcc-install)
 #   CSIBE_DIR      vendored corpus subdir (default: $PWD/csibe/src)
 #   OUT_FILE       output JSON (default: /tmp/metrics/csibe-${ARCH}.json)
+#   KEEP_OBJECTS_DIR  if set, also emit a -g copy of every built .o under
+#                     $KEEP_OBJECTS_DIR/<project>/<opt>/<src>.o (metrics unaffected)
 
 set -euo pipefail
 
@@ -168,6 +170,20 @@ for project_dir in "$CSIBE_DIR"/*/; do
       total_os=$((total_os + bytes))
     else
       total_o2=$((total_o2 + bytes))
+    fi
+
+    # Optional: keep a DEBUG-INFO copy of each object for offline size analysis.
+    # This is a SECOND compile pass with -g, kept entirely separate from the
+    # measurement above so the recorded byte counts are never affected by debug
+    # info. Objects go to a deterministic path so trunk and sh-lra trees align.
+    if [ -n "${KEEP_OBJECTS_DIR:-}" ]; then
+      while IFS= read -r -d '' src; do
+        rel="${src#"$workdir"/}"
+        dest="$KEEP_OBJECTS_DIR/$project/$opt/${rel%.*}.o"
+        mkdir -p "$(dirname "$dest")"
+        "$CC" "${CFLAGS_BASE[@]}" "${include_flags[@]}" "-${opt}" -g "$src" -o "$dest" 2>/dev/null \
+          || echo "run-csibe: keep -g recompile failed for $project/$opt/$rel" >&2
+      done < <(find "$workdir" \( -name '*.c' -o -name '*.i' \) -print0)
     fi
 
     rm -rf "$workdir"
