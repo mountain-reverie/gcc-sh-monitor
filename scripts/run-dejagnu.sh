@@ -49,7 +49,10 @@ cp "$GCC_BUILD_DIR/gcc/testsuite/gcc/gcc.sum" "$OUT_DIR/gcc.sum"
 gzip -c "$GCC_BUILD_DIR/gcc/testsuite/gcc/gcc.log" > "$OUT_DIR/gcc.log.gz"
 
 echo "run-dejagnu: results in $OUT_DIR"
-grep -c "^PASS:" "$OUT_DIR/gcc.sum" | xargs -I{} echo "  PASS: {}"
-grep -c "^FAIL:" "$OUT_DIR/gcc.sum" | xargs -I{} echo "  FAIL: {}"
-grep -c "^UNRESOLVED:" "$OUT_DIR/gcc.sum" | xargs -I{} echo "  UNRESOLVED: {}"
-grep -c "^UNSUPPORTED:" "$OUT_DIR/gcc.sum" | xargs -I{} echo "  UNSUPPORTED: {}"
+# `grep -c` exits 1 when the count is 0; under `set -euo pipefail` that would
+# abort the script (and redden the whole job) whenever a category is empty —
+# e.g. 0 UNRESOLVED. The `|| true` keeps these summary lines informational.
+grep -c "^PASS:" "$OUT_DIR/gcc.sum" | xargs -I{} echo "  PASS: {}" || true
+grep -c "^FAIL:" "$OUT_DIR/gcc.sum" | xargs -I{} echo "  FAIL: {}" || true
+grep -c "^UNRESOLVED:" "$OUT_DIR/gcc.sum" | xargs -I{} echo "  UNRESOLVED: {}" || true
+grep -c "^UNSUPPORTED:" "$OUT_DIR/gcc.sum" | xargs -I{} echo "  UNSUPPORTED: {}" || true
