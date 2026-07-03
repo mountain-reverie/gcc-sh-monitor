@@ -73,7 +73,17 @@ jobs:
           cat /tmp/metrics/dejagnu.json
 
       - name: Run CSiBE size measurements
+        env:
+          KEEP_OBJECTS_DIR: /tmp/csibe-obj
         run: scripts/run-csibe.sh
+
+      - name: Upload CSiBE objects (trunk)
+        uses: actions/upload-artifact@v7
+        with:
+          name: csibe-objects-trunk
+          path: /tmp/csibe-obj
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Run CoreMark size measurement
         run: scripts/run-coremark-size.sh
@@ -235,11 +245,20 @@ jobs:
         env:
           GCC_PREFIX: /tmp/gcc-install-sh-lra
           OUT_FILE: /tmp/metrics/csibe-sh4-lra.raw.json
+          KEEP_OBJECTS_DIR: /tmp/csibe-obj-lra
         run: |
           scripts/run-csibe.sh
           python3 scripts/suffix-metrics.py __lra \
             < /tmp/metrics/csibe-sh4-lra.raw.json \
             > /tmp/metrics/csibe-sh4-lra.json
+
+      - name: Upload CSiBE objects (sh-lra)
+        uses: actions/upload-artifact@v7
+        with:
+          name: csibe-objects-sh-lra
+          path: /tmp/csibe-obj-lra
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Measure SH code density (sh-lra, m2/m2a/m4)
         env:
