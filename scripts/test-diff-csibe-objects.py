@@ -32,6 +32,18 @@ def test_parse_nm_sizes_skips_sizeless():
     assert syms["some_bss_no_addr_ok"] == 0x4
     assert "sizeless_symbol_skipped" not in syms
 
+NM_REALISTIC = """\
+00001a2c 00000064 T sh_expand_prologue
+00000000 000000f0 t local_helper
+0000abcd          T sizeless_import
+"""
+
+def test_parse_nm_sizes_realistic_widths():
+    syms = parse_nm_sizes(NM_REALISTIC)
+    assert syms["sh_expand_prologue"] == 0x64
+    assert syms["local_helper"] == 0xf0
+    assert "sizeless_import" not in syms
+
 def test_diff_totals_ranks_and_handles_missing():
     trunk = {"p1": 100, "p2": 50, "gone": 30}
     lra   = {"p1": 130, "p2": 50, "new": 10}
@@ -45,5 +57,6 @@ if __name__ == "__main__":
     test_parse_size_sysv()
     test_code_bytes_sums_text_rodata_data_only()
     test_parse_nm_sizes_skips_sizeless()
+    test_parse_nm_sizes_realistic_widths()
     test_diff_totals_ranks_and_handles_missing()
     print("ok")
