@@ -86,21 +86,6 @@
     //   FDPIC: busybox_musl_fdpic[_lto]_* collapse to a single chart whose two
     //   series are the LTO variants (fdpic vs fdpic +LTO) — arch is always sh4.
     function resolve(name) {
-      // sh-lra branch metrics carry a trailing "__lra". Peel it first, resolve
-      // the remainder exactly as the trunk metric would, then override the
-      // series so the sh-lra line lands in the SAME chart as trunk.
-      if (name.endsWith("__lra")) {
-        const trunk = resolve(name.slice(0, -"__lra".length));
-        return {
-          chartBase: trunk.chartBase,
-          seriesKey: trunk.seriesKey === "_" ? "lra"
-                   : `${trunk.seriesKey}-lra`,
-          label: `${trunk.label} (sh-lra)`,
-          color: trunk.color,      // same hue as its trunk sibling
-          order: trunk.order + 100, // sort sh-lra series after all trunk series
-          dashed: true,
-        };
-      }
       const { base, arch } = splitArch(name);
       if (base.includes("_fdpic")) {
         const lto = base.includes("_fdpic_lto");
@@ -132,6 +117,7 @@
     for (const suite of Object.values(data.entries || {})) {
       for (const run of suite) {
         for (const b of run.benches) {
+          if (b.name.endsWith("__lra")) continue;   // sh-lra lane retired; ignore dormant data
           if (!byMetric[b.name]) byMetric[b.name] = [];
           byMetric[b.name].push({
             x: run.date,
