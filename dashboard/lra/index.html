@@ -18,21 +18,11 @@
       </thead>
       <tbody id="lra-body"></tbody>
     </table>
-
-    <h2>sh-lra branch (vs Debian)</h2>
-    <p id="lra-shlra-summary" class="muted">Loading…</p>
-    <table id="lra-shlra-table" class="lra">
-      <thead>
-        <tr id="lra-shlra-head"><th>Case</th></tr>
-      </thead>
-      <tbody id="lra-shlra-body"></tbody>
-    </table>
   </main>
 
   <footer>
     <p>
       Raw: <a href="lra-results.json">lra-results.json</a> ·
-      <a href="lra-results-lra.json">lra-results-lra.json</a> ·
       <a href="https://github.com/mountain-reverie/gcc-sh-monitor/tree/main/lra-corpus">corpus source</a> ·
       <a href="https://github.com/mountain-reverie/gcc-sh-monitor">repo</a>
     </p>
@@ -53,20 +43,6 @@
       .catch(_ => {
         document.getElementById("summary").textContent =
           "No LRA results published yet.";
-      });
-
-    fetch("lra-results-lra.json", { cache: "no-cache" })
-      .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then(data => render(data, {
-        summaryEl: document.getElementById("lra-shlra-summary"),
-        headEl: document.getElementById("lra-shlra-head"),
-        bodyEl: document.getElementById("lra-shlra-body"),
-        commitBaseUrl: "https://github.com/olegendo/gcc/commit/",
-        summaryPrefix: "From Oleg's devel/sh-lra branch commit",
-      }))
-      .catch(_ => {
-        document.getElementById("lra-shlra-summary").textContent =
-          "No sh-lra LRA results yet.";
       });
 
     function render(data, target) {
