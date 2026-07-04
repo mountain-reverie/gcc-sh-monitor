@@ -96,7 +96,15 @@ jobs:
         run: GCC=/tmp/gcc-multilib-install/bin/sh4-linux-gnu-gcc scripts/check-sh-isa-flags.sh
 
       - name: Measure SH code density (m2/m2a/m4)
-        run: GCC=/tmp/gcc-multilib-install/bin/sh4-linux-gnu-gcc scripts/measure-sh-density.sh
+        run: GCC=/tmp/gcc-multilib-install/bin/sh4-linux-gnu-gcc KEEP_OBJECTS_DIR=/tmp/density-obj scripts/measure-sh-density.sh
+
+      - name: Upload density objects (m2/m2a/m4)
+        uses: actions/upload-artifact@v7
+        with:
+          name: density-objects
+          path: /tmp/density-obj
+          if-no-files-found: warn
+          retention-days: 7
 
       # sh-sim lane: build the tested-commit sh-elf gcc into the baked /opt/sh-elf
       # toolchain, then EXECUTE gcc.c-torture on the SH simulator (sh-elf-run) for
