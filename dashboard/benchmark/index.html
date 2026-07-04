@@ -31,6 +31,14 @@
     upstream commit tested.</p>
   </header>
 
+  <div id="window-controls" style="margin: 0 0 1rem; display: flex; gap: .5rem; flex-wrap: wrap;">
+    <span class="muted" style="align-self:center">Window:</span>
+    <button type="button" data-window="week">1 week</button>
+    <button type="button" data-window="month">1 month</button>
+    <button type="button" data-window="year">1 year</button>
+    <button type="button" data-window="all">All</button>
+  </div>
+
   <main id="charts"></main>
 
   <footer>
@@ -142,68 +150,97 @@
 
     // Group metrics into charts, splitting arch suffixes (or, for FDPIC, the
     // LTO variant) into the series that make up each chart.
-    const byBase = {};
-    for (const [name, points] of Object.entries(byMetric)) {
-      points.sort((a, b) => a.x - b.x);
-      const { chartBase, seriesKey, label, color, order, dashed } = resolve(name);
-      if (!byBase[chartBase]) byBase[chartBase] = {};
-      byBase[chartBase][seriesKey] = { points, label, color, order, dashed };
-    }
+    const WINDOWS = { week: 7*864e5, month: 30*864e5, year: 365*864e5, all: Infinity };
+    let charts = [];
 
-    for (const base of Object.keys(byBase).sort()) {
-      const series = Object.values(byBase[base]).sort((a, b) => a.order - b.order);
+    function render(windowMs) {
+      charts.forEach((c) => c.destroy());
+      charts = [];
+      main.innerHTML = "";
+      const cutoff = windowMs === Infinity ? -Infinity : Date.now() - windowMs;
 
-      const section = document.createElement("section");
-      const h2 = document.createElement("h2");
-      h2.textContent = base;
-      section.appendChild(h2);
-      const box = document.createElement("div");
-      box.className = "chart-box";
-      const canvas = document.createElement("canvas");
-      box.appendChild(canvas);
-      section.appendChild(box);
-      main.appendChild(section);
+      const byBase = {};
+      for (const [name, pts] of Object.entries(byMetric)) {
+        const points = pts.filter((p) => p.x >= cutoff).sort((a, b) => a.x - b.x);
+        if (!points.length) continue;
+        const { chartBase, seriesKey, label, color, order, dashed } = resolve(name);
+        if (!byBase[chartBase]) byBase[chartBase] = {};
+        byBase[chartBase][seriesKey] = { points, label, color, order, dashed };
+      }
 
-      const unit = series[0].points[0].unit;
-      const datasets = series.map((s) => ({
-        label: s.label,
-        data: s.points,
-        borderColor: s.color,
-        backgroundColor: s.color + "22",
-        borderDash: s.dashed ? [5, 4] : [],
-        tension: 0.1,
-        pointRadius: 4,
-      }));
+      if (Object.keys(byBase).length === 0) {
+        main.innerHTML = "<p>No data in this range.</p>";
+        return;
+      }
 
-      new Chart(canvas, {
-        type: "line",
-        data: { datasets },
-        options: {
-          parsing: false,
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            x: { type: "time", time: { unit: "day" } },
-            y: { beginAtZero: true, title: { display: true, text: unit } },
-          },
-          plugins: {
-            tooltip: {
-              callbacks: {
-                title: (items) => {
-                  const d = new Date(items[0].raw.x);
-                  return d.toISOString().slice(0, 19) + "Z";
-                },
-                label: (item) => {
-                  const prefix = item.dataset.label ? `${item.dataset.label}: ` : "";
-                  return `${prefix}${item.raw.y} ${item.raw.unit} (${item.raw.commit})`;
+      for (const base of Object.keys(byBase).sort()) {
+        const series = Object.values(byBase[base]).sort((a, b) => a.order - b.order);
+
+        const section = document.createElement("section");
+        const h2 = document.createElement("h2");
+        h2.textContent = base;
+        section.appendChild(h2);
+        const box = document.createElement("div");
+        box.className = "chart-box";
+        const canvas = document.createElement("canvas");
+        box.appendChild(canvas);
+        section.appendChild(box);
+        main.appendChild(section);
+
+        const unit = series[0].points[0].unit;
+        const datasets = series.map((s) => ({
+          label: s.label,
+          data: s.points,
+          borderColor: s.color,
+          backgroundColor: s.color + "22",
+          borderDash: s.dashed ? [5, 4] : [],
+          tension: 0.1,
+          pointRadius: 4,
+        }));
+
+        charts.push(new Chart(canvas, {
+          type: "line",
+          data: { datasets },
+          options: {
+            parsing: false,
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { type: "time", time: { unit: "day" } },
+              y: { beginAtZero: false, title: { display: true, text: unit } },
+            },
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  title: (items) => {
+                    const d = new Date(items[0].raw.x);
+                    return d.toISOString().slice(0, 19) + "Z";
+                  },
+                  label: (item) => {
+                    const prefix = item.dataset.label ? `${item.dataset.label}: ` : "";
+                    return `${prefix}${item.raw.y} ${item.raw.unit} (${item.raw.commit})`;
+                  },
                 },
               },
+              legend: { display: datasets.length > 1 },
             },
-            legend: { display: datasets.length > 1 },
           },
-        },
-      });
+        }));
+      }
     }
+
+    function applyWindow(key) {
+      const k = WINDOWS[key] ? key : "week";
+      localStorage.setItem("benchmarkWindow", k);
+      for (const b of document.querySelectorAll("#window-controls button")) {
+        b.style.fontWeight = b.dataset.window === k ? "bold" : "normal";
+      }
+      render(WINDOWS[k]);
+    }
+    for (const b of document.querySelectorAll("#window-controls button")) {
+      b.addEventListener("click", () => applyWindow(b.dataset.window));
+    }
+    applyWindow(localStorage.getItem("benchmarkWindow") || "week");
   </script>
 </body>
 </html>
