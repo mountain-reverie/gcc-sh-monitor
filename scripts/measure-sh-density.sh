@@ -28,6 +28,8 @@
 #   COREMARK_DIR  default: $PWD/coremark
 #   OUT_FILE      metrics JSON (default: /tmp/metrics/sh-density.json)
 #   JOBS          parallelism for the busybox build (default: nproc)
+#   KEEP_OBJECTS_DIR  if set, copy measured objects to
+#                     $KEEP_OBJECTS_DIR/<corpus>/<isa>/<rel>.o (metrics unaffected)
 set -euo pipefail
 
 TARGET="${TARGET:-sh4-linux-gnu}"
@@ -44,6 +46,22 @@ JOBS="${JOBS:-$(nproc)}"
 SYSROOT="/usr/${TARGET}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ISAS=(m2 m2a m4)
+
+# When KEEP_OBJECTS_DIR is set, copy a corpus's measured per-ISA objects into a
+# deterministic tree for offline size analysis. This is a pure copy AFTER
+# measurement, so the recorded byte counts are never affected.
+#   keep_objects <corpus> <isa> <isa-work-dir>
+keep_objects() {
+  [ -n "${KEEP_OBJECTS_DIR:-}" ] || return 0
+  local corpus="$1" isa="$2" dir="$3"
+  local o rel dest
+  while IFS= read -r -d '' o; do
+    rel="${o#"$dir"/}"
+    dest="$KEEP_OBJECTS_DIR/$corpus/$isa/$rel"
+    mkdir -p "$(dirname "$dest")"
+    cp "$o" "$dest"
+  done < <(find "$dir" -name '*.o' -print0)
+}
 
 mkdir -p "$(dirname "$OUT_FILE")"
 # Fail-safe: if the (multilib) compiler or size tool is missing, emit an
@@ -178,6 +196,7 @@ measure_busybox() {
     compile_busybox "$isa" "$work/$isa"
   done
   RAW[busybox]=$(measure_common2 "$work/m2" "$work/m4")
+  for isa in m2 m4; do keep_objects busybox "$isa" "$work/$isa"; done
   rm -rf "$work"
 }
 
@@ -202,6 +221,7 @@ measure_coremark() {
     compile_tree_perfile "$src" "$isa" "$work/$isa"
   done
   RAW[coremark]=$(measure_common "$work/m2" "$work/m2a" "$work/m4")
+  for isa in "${ISAS[@]}"; do keep_objects coremark "$isa" "$work/$isa"; done
   rm -rf "$work"
 }
 
@@ -221,6 +241,7 @@ measure_csibe() {
     done
   done
   RAW[csibe]=$(measure_common "$work/m2" "$work/m2a" "$work/m4")
+  for isa in "${ISAS[@]}"; do keep_objects csibe "$isa" "$work/$isa"; done
   rm -rf "$work"
 }
 
