@@ -87,7 +87,9 @@ def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("trunk_dir")
     ap.add_argument("lra_dir")
-    ap.add_argument("--opt", default="Os", choices=["Os", "O2"])
+    ap.add_argument("--opt", default="Os",
+                    help="build variant subdir to diff: Os/O2 for CSiBE, "
+                         "m2/m2a/m4 for density (default: Os)")
     ap.add_argument("--top", type=int, default=10)
     ap.add_argument("--project", default=None)
     ap.add_argument("--tool-prefix", default="sh4-linux-gnu-")
