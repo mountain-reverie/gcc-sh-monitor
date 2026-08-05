@@ -29,6 +29,9 @@ BISECT_SRC="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 # Build the candidate GCC, or restore it from the per-SHA cache when
 # BISECT_CACHE_DIR is set. The cache exists so a second bisect over the same
 # commit range costs no rebuilds — a GCC build is ~40 min, unpacking is seconds.
+# Returns: 0 = success, 1 = genuine build failure (a fact about the commit),
+# 2 = cache-restore failure (a fact about our infra, never the commit) — every
+# call site must map 2 to skip(125), never to bad(1).
 build() {
   local prefix="${GCC_PREFIX:-/tmp/gcc-install}"
   local cache="${BISECT_CACHE_DIR:-}"
@@ -40,11 +43,12 @@ build() {
     if ! tar --zstd -xf "$tarball" -C "$prefix"; then
       echo "bisect: cache restore failed for $sha, clearing prefix" >&2
       rm -rf "$prefix"
-      return 1
+      return 2
     fi
     return 0
   fi
 
+  rm -rf "$prefix"
   ( cd "$MONITOR_DIR" && GCC_PREFIX="$prefix" scripts/build-gcc.sh "$sha" sh4-linux-gnu ) \
     || return 1
 
@@ -63,7 +67,12 @@ build() {
 
 case "$TYPE" in
   build)
-    if build; then exit 0; else exit 1; fi
+    build; rc=$?
+    case "$rc" in
+      0) exit 0 ;;
+      2) exit 125 ;;   # cache-restore failure: infra fact, not a verdict on this commit
+      *) exit 1 ;;
+    esac
     ;;
   script)
     build || exit 125
