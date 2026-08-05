@@ -15,6 +15,7 @@
 #   BUSYBOX_DIR    vendored source (default: $PWD/busybox)
 #   OUT_FILE       output JSON (default: /tmp/metrics/busybox-${ARCH}.json)
 #   JOBS           parallel build jobs (default: $(nproc))
+#   BB_EXTRA_CFLAGS  extra flags appended to KBUILD_CFLAGS_EXTRA (default: empty)
 
 set -euo pipefail
 
@@ -148,7 +149,7 @@ if ! make -j"$JOBS" all \
        ARCH=$BB_ARCH \
        CC="$CC" \
        CROSS_COMPILE="$CROSS_COMPILE" \
-       KBUILD_CFLAGS_EXTRA="-B/usr/bin/${TARGET}- --sysroot=$SYSROOT" \
+       KBUILD_CFLAGS_EXTRA="-B/usr/bin/${TARGET}- --sysroot=$SYSROOT ${BB_EXTRA_CFLAGS:-}" \
        2> "$workdir/build.err"; then
   echo "run-busybox: build failed. Tail of build.err:" >&2
   tail -30 "$workdir/build.err" >&2
