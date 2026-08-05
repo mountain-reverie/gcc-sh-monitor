@@ -9,6 +9,8 @@
 #   sh-bisect-predicate.sh build
 #   sh-bisect-predicate.sh script  '<reproduce command>'
 #   sh-bisect-predicate.sh dejagnu '<regressed-tests-file>'   # one "path detail" per line
+#   sh-bisect-predicate.sh metric --script <path> --key <name> \
+#                                 --threshold <number> --direction below|above
 #
 # Environment:
 #   MONITOR_DIR  path to the gcc-sh-monitor checkout (scripts/ + boards/)
@@ -65,6 +67,49 @@ case "$TYPE" in
       fi
     done < "$ARG"
     exit 0
+    ;;
+  metric)
+    # Bisect a continuous metric against a threshold.
+    #   metric --script <path> --key <name> --threshold <n> --direction below|above
+    m_script=""; m_key=""; m_threshold=""; m_direction=""
+    shift   # drop the leading "metric"
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --script)    m_script="$2";    shift 2 ;;
+        --key)       m_key="$2";       shift 2 ;;
+        --threshold) m_threshold="$2"; shift 2 ;;
+        --direction) m_direction="$2"; shift 2 ;;
+        *) echo "metric: unknown option $1" >&2; exit 125 ;;
+      esac
+    done
+    for v in m_script m_key m_threshold m_direction; do
+      [ -n "${!v}" ] || { echo "metric: --${v#m_} is required" >&2; exit 125; }
+    done
+    case "$m_direction" in
+      below|above) ;;
+      *) echo "metric: --direction must be below or above" >&2; exit 125 ;;
+    esac
+
+    build || exit 125
+
+    metric_out="$OUT_DIR/metric.json"
+    rm -f "$metric_out"
+    mkdir -p "$OUT_DIR"
+    ( cd "$MONITOR_DIR" && OUT_FILE="$metric_out" "$m_script" ) || exit 125
+    [ -f "$metric_out" ] || { echo "metric: $m_script wrote no $metric_out" >&2; exit 125; }
+
+    value=$(jq -r --arg k "$m_key" \
+              'map(select(.name == $k)) | if length == 0 then "" else .[0].value end' \
+              "$metric_out" 2>/dev/null)
+    [ -n "$value" ] && [ "$value" != "null" ] \
+      || { echo "metric: key $m_key absent from $metric_out" >&2; exit 125; }
+
+    echo "metric: $m_key = $value (threshold $m_threshold, bad if $m_direction)" >&2
+    if awk -v v="$value" -v t="$m_threshold" -v d="$m_direction" \
+         'BEGIN { exit !((d == "below" && v < t) || (d == "above" && v > t)) }'; then
+      exit 1   # bad
+    fi
+    exit 0     # good
     ;;
   *)
     echo "unknown predicate type: $TYPE" >&2

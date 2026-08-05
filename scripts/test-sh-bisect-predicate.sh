@@ -116,4 +116,57 @@ setup; mk_shsim_build 0; mk_shsim_run_ieee "FAIL: gcc.c-torture/execute/ieee/mze
 printf 'm4:gcc.c-torture/execute/ieee/mzero.c execution, -O1\n' > "$root/regressed.txt"
 check "shsim-ieee-failing-bad" 1 sh-sim "$root/regressed.txt"
 
+mk_metric() {  # $1 = metric value the stub script emits
+  cat > "$mon/scripts/stub-metric.sh" <<EOF
+#!/usr/bin/env bash
+mkdir -p "\$(dirname "\$OUT_FILE")"
+cat > "\$OUT_FILE" <<JSON
+[{"name":"csibe_total_os_bytes_sh4","unit":"bytes","value":$1}]
+JSON
+EOF
+  chmod +x "$mon/scripts/stub-metric.sh"
+}
+
+mk_metric_empty() {  # emits valid JSON that lacks the key
+  cat > "$mon/scripts/stub-metric.sh" <<'EOF'
+#!/usr/bin/env bash
+mkdir -p "$(dirname "$OUT_FILE")"
+printf '[{"name":"other_key","unit":"bytes","value":1}]\n' > "$OUT_FILE"
+EOF
+  chmod +x "$mon/scripts/stub-metric.sh"
+}
+
+MOPTS="--key csibe_total_os_bytes_sh4 --threshold 1519843 --direction below"
+
+# value above threshold (pre-regression size) -> good(0)
+setup; mk_build 0; mk_metric 1543331
+check "metric-above-threshold-good" 0 metric --script scripts/stub-metric.sh $MOPTS
+
+# value below threshold (post-regression size) -> bad(1)
+setup; mk_build 0; mk_metric 1496355
+check "metric-below-threshold-bad" 1 metric --script scripts/stub-metric.sh $MOPTS
+
+# exactly at threshold is not "below" -> good(0)
+setup; mk_build 0; mk_metric 1519843
+check "metric-at-threshold-good" 0 metric --script scripts/stub-metric.sh $MOPTS
+
+# direction=above inverts the verdict
+setup; mk_build 0; mk_metric 1543331
+check "metric-direction-above-bad" 1 metric --script scripts/stub-metric.sh \
+      --key csibe_total_os_bytes_sh4 --threshold 1519843 --direction above
+
+# GCC build broken -> skip(125)
+setup; mk_build 1; mk_metric 1496355
+check "metric-buildbroken-skip" 125 metric --script scripts/stub-metric.sh $MOPTS
+
+# metric script fails -> skip(125)
+setup; mk_build 0
+printf '#!/usr/bin/env bash\nexit 1\n' > "$mon/scripts/stub-metric.sh"
+chmod +x "$mon/scripts/stub-metric.sh"
+check "metric-script-failed-skip" 125 metric --script scripts/stub-metric.sh $MOPTS
+
+# key absent from output -> skip(125)
+setup; mk_build 0; mk_metric_empty
+check "metric-key-absent-skip" 125 metric --script scripts/stub-metric.sh $MOPTS
+
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails failures"; exit 1; }
