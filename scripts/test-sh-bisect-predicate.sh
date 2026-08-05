@@ -207,6 +207,31 @@ if [ "$n" = 1 ]; then echo "PASS cache-second-run-is-a-hit"; else
 if [ -f "$prefix/bin/marker" ]; then echo "PASS cache-hit-restores-prefix"; else
   echo "FAIL cache-hit-restores-prefix: marker missing"; fails=$((fails+1)); fi
 
+# A corrupted/truncated cache tarball under the `build` arm must SKIP (125),
+# never be reported as a compile failure (1) — it is an infra fact, not a
+# verdict on the commit under test.
+setup; mk_counting_build
+cache="$root/cache"; prefix="$root/prefix"; counter="$root/counter"; : > "$counter"
+mkdir -p "$cache"
+sha=$(cd "$root" && git rev-parse HEAD)
+head -c 16 /dev/zero > "$cache/$sha.tar.zst"   # truncated/corrupt, not a valid archive
+( cd "$root" && MONITOR_DIR="$mon" OUT_DIR="$out" \
+    BISECT_CACHE_DIR="$cache" GCC_PREFIX="$prefix" COUNTER="$counter" \
+    "$pred" build ) >/dev/null 2>&1
+got=$?
+if [ "$got" = 125 ]; then echo "PASS build-corrupt-cache-skip"; else
+  echo "FAIL build-corrupt-cache-skip: want exit 125 got $got"; fails=$((fails+1)); fi
+
+# A genuine compile failure under the `build` arm must still be BAD (1),
+# even with BISECT_CACHE_DIR set and no cache entry present (miss -> build).
+setup; mk_build 1
+cache="$root/cache"; prefix="$root/prefix"
+( cd "$root" && MONITOR_DIR="$mon" OUT_DIR="$out" \
+    BISECT_CACHE_DIR="$cache" GCC_PREFIX="$prefix" "$pred" build ) >/dev/null 2>&1
+got=$?
+if [ "$got" = 1 ]; then echo "PASS build-genuine-failure-still-bad"; else
+  echo "FAIL build-genuine-failure-still-bad: want exit 1 got $got"; fails=$((fails+1)); fi
+
 # With BISECT_CACHE_DIR unset, every run rebuilds (unchanged behaviour).
 setup; mk_counting_build
 prefix="$root/prefix"; counter="$root/counter"; : > "$counter"
