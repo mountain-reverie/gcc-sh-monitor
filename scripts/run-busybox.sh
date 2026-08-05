@@ -108,8 +108,13 @@ cd "$workdir"
 if [ ! -f Config.in ]; then
   echo "run-busybox: workdir layout broken (Config.in missing). Listing:" >&2
   ls -la "$workdir" >&2 | head -30
-  skip_zero "workdir copy incomplete"
-  exit 0
+  # This is NOT an "environment absent" fact like the four checks above (cross
+  # gcc / corpus dir / size / qemu) — it is a mid-run copy corruption (disk
+  # exhaustion, mktemp race, partial cp) discovered only after the fact. A
+  # soft zero-metric skip here is exactly the failure mode Task 1 eliminated
+  # for compile failures: reporting "good" for a run that never actually
+  # tested the candidate compiler. Fail hard instead.
+  fail_hard "workdir copy incomplete"
 fi
 
 echo "run-busybox: configuring..."

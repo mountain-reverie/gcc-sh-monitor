@@ -58,6 +58,16 @@ export GCC_PREFIX=/tmp/gcc-install
 mkdir -p "$OUT_DIR" "$CACHE_DIR"
 
 cleanup() {
+  local rc=$?
+  # Only prune on a clean (exit 0) run. An aborted/interrupted run (nonzero
+  # exit, e.g. a shell error, a signal, or the script dying partway through)
+  # is exactly when a retry needs the warm cache most — deleting it on abort
+  # would throw away the whole reason bisect 2 exists to be fast, and would
+  # force a full rebuild for no reason related to the actual failure.
+  if [ "$rc" != 0 ]; then
+    echo "=> driver exited nonzero ($rc); keeping build cache at $CACHE_DIR for retry" >&2
+    return
+  fi
   if [ "${KEEP_CACHE:-0}" != 1 ]; then
     echo "=> pruning build cache (set KEEP_CACHE=1 to keep it)"
     rm -rf "$CACHE_DIR"
@@ -125,16 +135,36 @@ git -C "$BISECT_SRC" fetch --all --quiet
 ( cd "$BISECT_SRC" && git bisect reset >/dev/null 2>&1 || true )
 
 run_bisect() {  # $1 = log file, rest = predicate argv
+  # `git bisect run` exits nonzero (verified: 2) when the range ends with
+  # only skipped commits left ("We cannot bisect more!") — a real, expected
+  # terminal state, not a driver malfunction. It also identifies a first bad
+  # commit successfully in the ordinary case (exit 0). Either way, this
+  # function's job is only to produce a log for culprit_from_log to parse;
+  # its own exit status must never propagate to the caller, or `set -e`
+  # would abort the whole driver on the skip-only outcome — before bisect 2
+  # ever runs and before summary.txt/ice-report.txt get written.
   local log="$1"; shift
+  # The `|| true` on the pipeline itself is required, not decorative: under
+  # `set -e`, a failing pipeline aborts the script immediately at the point
+  # it fails — a later `true` statement on its own line is never reached and
+  # does NOT retroactively make this line safe.
   ( cd "$BISECT_SRC"
     git bisect reset >/dev/null 2>&1 || true
     git bisect start "$BAD" "$GOOD"
     git bisect run "$MONITOR_DIR/scripts/sh-bisect-predicate.sh" "$@"
-  ) 2>&1 | tee "$log"
+  ) 2>&1 | tee "$log" || true
 }
 
-culprit_from_log() {  # extracts the SHA git bisect declared first-bad
-  grep -oE '^[0-9a-f]{40} is the first bad commit' "$1" | head -1 | cut -d' ' -f1
+culprit_from_log() {  # extracts the SHA git bisect declared first-bad.
+  # No match is a real, expected outcome (e.g. the bisect ends with only
+  # skipped commits left, so git bisect never prints "is the first bad
+  # commit" at all) — NOT a script error. Under `set -e`, letting the grep's
+  # exit status propagate into a command-substitution assignment
+  # (`X=$(culprit_from_log ...)`) would kill the whole driver right here,
+  # before bisect 2 ever runs and before summary.txt/ice-report.txt are
+  # written. Force success unconditionally so the caller always gets either
+  # a SHA or an empty string, never a fatal signal.
+  grep -oE '^[0-9a-f]{40} is the first bad commit' "$1" | head -1 | cut -d' ' -f1 || true
 }
 
 echo "############################################################"
@@ -142,7 +172,7 @@ echo "# Bisect 1/2 — BusyBox ICE (range $GOOD..$BAD)"
 echo "############################################################"
 run_bisect "$OUT_ROOT/bisect1-ice.log" \
   script "TARGET=sh4-linux-gnu scripts/run-busybox.sh"
-ICE_SHA=$(culprit_from_log "$OUT_ROOT/bisect1-ice.log")
+ICE_SHA=$(culprit_from_log "$OUT_ROOT/bisect1-ice.log") || true
 
 echo
 echo "############################################################"
@@ -153,7 +183,7 @@ run_bisect "$OUT_ROOT/bisect2-csibe.log" \
          --key "$CSIBE_KEY" \
          --threshold "$CSIBE_THRESHOLD" \
          --direction below
-CSIBE_SHA=$(culprit_from_log "$OUT_ROOT/bisect2-csibe.log")
+CSIBE_SHA=$(culprit_from_log "$OUT_ROOT/bisect2-csibe.log") || true
 
 # Capture the full ICE diagnostic at the culprit, not the truncated backtrace
 # tail the CI logs preserve. This is the signature the Bugzilla search needs,
