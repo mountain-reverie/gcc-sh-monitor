@@ -49,7 +49,7 @@ CC_RAW="$GCC_PREFIX/bin/${TARGET}-gcc"
 CC="$CC_RAW -B/usr/bin/${TARGET}-"
 SIZE="${SH4_SIZE:-/usr/bin/${TARGET}-size}"
 
-emit_zero() {
+skip_zero() {
   local reason="$1"
   echo "run-musl: $reason — emitting zero metrics" >&2
   mkdir -p "$(dirname "$OUT_FILE")"
@@ -63,10 +63,16 @@ emit_zero() {
 EOF
 }
 
-if [ ! -x "$CC_RAW" ];   then emit_zero "missing $CC_RAW";   exit 0; fi
-if [ ! -d "$MUSL_DIR" ]; then emit_zero "missing $MUSL_DIR"; exit 0; fi
-if [ ! -x "$SIZE" ];     then emit_zero "missing $SIZE";     exit 0; fi
-if ! command -v "$QEMU" >/dev/null; then emit_zero "missing $QEMU"; exit 0; fi
+fail_hard() {
+  local reason="$1"
+  echo "::error::run-musl: $reason" >&2
+  exit 1
+}
+
+if [ ! -x "$CC_RAW" ];   then skip_zero "missing $CC_RAW";   exit 0; fi
+if [ ! -d "$MUSL_DIR" ]; then skip_zero "missing $MUSL_DIR"; exit 0; fi
+if [ ! -x "$SIZE" ];     then skip_zero "missing $SIZE";     exit 0; fi
+if ! command -v "$QEMU" >/dev/null; then skip_zero "missing $QEMU"; exit 0; fi
 
 workdir=$(mktemp -d)
 trap 'rm -rf "$workdir"' EXIT
@@ -87,23 +93,20 @@ if ! ./configure \
        >"$workdir/configure.out" 2>&1; then
   echo "run-musl: configure failed. Output:" >&2
   tail -30 "$workdir/configure.out" >&2
-  emit_zero "configure failed"
-  exit 0
+  fail_hard "configure failed"
 fi
 
 echo "run-musl: building..."
-if ! make -j"$JOBS" >"$workdir/build.out" 2>&1; then
+if ! make -j"$JOBS" all >"$workdir/build.out" 2>&1; then
   echo "run-musl: build failed. Tail of build.out:" >&2
   tail -30 "$workdir/build.out" >&2
-  emit_zero "build failed"
-  exit 0
+  fail_hard "build failed"
 fi
 
 if ! make install >"$workdir/install.out" 2>&1; then
   echo "run-musl: install failed. Output:" >&2
   tail -20 "$workdir/install.out" >&2
-  emit_zero "install failed"
-  exit 0
+  fail_hard "install failed"
 fi
 
 # Locate the libc.so ELF object (not the linker script). musl typically
@@ -119,8 +122,7 @@ done
 if [ -z "$libc_elf" ]; then
   echo "run-musl: cannot locate libc.so ELF in $install_dir/lib:" >&2
   ls -la "$install_dir/lib" >&2
-  emit_zero "libc.so ELF missing"
-  exit 0
+  fail_hard "libc.so ELF missing"
 fi
 echo "run-musl: libc.so ELF: $libc_elf"
 
