@@ -4,7 +4,8 @@
 # and measure section sizes. Emits /tmp/metrics/busybox-musl-${ARCH}.json
 # with five entries.
 #
-# Build failure → all metrics emit as 0 (script returns 0 so CI proceeds).
+# Build failure → hard error (exit 1), no metrics emitted, CI goes red.
+# Missing toolchain/corpus/qemu → zeros emitted, exit 0 (lane is skipped).
 #
 # Environment:
 #   TARGET         GNU triple: sh4-linux-gnu (default) | arm-linux-gnueabihf
@@ -93,7 +94,7 @@ FDPIC_LIBGCC="${FDPIC_LIBGCC:-$GCC_PREFIX/lib/sh-fdpic/libgcc.a}"
 CC_RAW="$GCC_PREFIX/bin/${TARGET}-gcc"
 SIZE="${SH4_SIZE:-/usr/bin/${TARGET}-size}"
 
-emit_zero() {
+skip_zero() {
   local reason="$1"
   echo "run-busybox-musl: $reason — emitting zero metrics" >&2
   mkdir -p "$(dirname "$OUT_FILE")"
@@ -108,18 +109,27 @@ emit_zero() {
 EOF
 }
 
+# The toolchain was present and the compile broke. Publishing a 0 here is what
+# hid the 2026-08-04 back_threader ICE for over a day: 0 is numeric, so the
+# publish guard accepted it and the run stayed green. Fail loudly instead.
+fail_hard() {
+  local reason="$1"
+  echo "::error::run-busybox-musl: $reason" >&2
+  exit 1
+}
+
 # FDPIC is SH-specific; other arches have no fdpic ABI to measure.
 if [ "$ABI" = "fdpic" ] && [ "$ARCH" != "sh4" ]; then
-  emit_zero "fdpic unsupported on $ARCH"; exit 0
+  skip_zero "fdpic unsupported on $ARCH"; exit 0
 fi
-if [ ! -x "$CC_RAW" ];    then emit_zero "missing $CC_RAW";    exit 0; fi
+if [ ! -x "$CC_RAW" ];    then skip_zero "missing $CC_RAW";    exit 0; fi
 if [ "$ABI" = "fdpic" ] && [ ! -f "$FDPIC_LIBGCC" ]; then
-  emit_zero "missing fdpic libgcc $FDPIC_LIBGCC"; exit 0
+  skip_zero "missing fdpic libgcc $FDPIC_LIBGCC"; exit 0
 fi
-if [ ! -d "$MUSL_DIR" ];   then emit_zero "missing $MUSL_DIR";   exit 0; fi
-if [ ! -d "$BUSYBOX_DIR" ];then emit_zero "missing $BUSYBOX_DIR";exit 0; fi
-if [ ! -x "$SIZE" ];       then emit_zero "missing $SIZE";       exit 0; fi
-if ! command -v "$QEMU" >/dev/null; then emit_zero "missing $QEMU"; exit 0; fi
+if [ ! -d "$MUSL_DIR" ];   then skip_zero "missing $MUSL_DIR";   exit 0; fi
+if [ ! -d "$BUSYBOX_DIR" ];then skip_zero "missing $BUSYBOX_DIR";exit 0; fi
+if [ ! -x "$SIZE" ];       then skip_zero "missing $SIZE";       exit 0; fi
+if ! command -v "$QEMU" >/dev/null; then skip_zero "missing $QEMU"; exit 0; fi
 
 workdir=$(mktemp -d)
 trap 'rm -rf "$workdir"' EXIT
@@ -141,22 +151,19 @@ if ! ./configure \
        >"$workdir/musl-configure.out" 2>&1; then
   echo "run-busybox-musl: musl configure failed. Output:" >&2
   tail -30 "$workdir/musl-configure.out" >&2
-  emit_zero "musl configure failed"
-  exit 0
+  fail_hard "musl configure failed"
 fi
 
-if ! make -j"$JOBS" >"$workdir/musl-build.out" 2>&1; then
+if ! make -j"$JOBS" all >"$workdir/musl-build.out" 2>&1; then
   echo "run-busybox-musl: musl build failed. Output:" >&2
   tail -30 "$workdir/musl-build.out" >&2
-  emit_zero "musl build failed"
-  exit 0
+  fail_hard "musl build failed"
 fi
 
 if ! make install >"$workdir/musl-install.out" 2>&1; then
   echo "run-busybox-musl: musl install failed. Output:" >&2
   tail -20 "$workdir/musl-install.out" >&2
-  emit_zero "musl install failed"
-  exit 0
+  fail_hard "musl install failed"
 fi
 
 echo "run-busybox-musl: musl installed at $musl_install"
@@ -207,8 +214,7 @@ echo "int main(void) { return 0; }" > "$workdir/sanity.c"
 if ! "$wrapper" "$workdir/sanity.c" -o "$workdir/sanity" 2>"$workdir/wrapper-test.out"; then
   echo "run-busybox-musl: wrapper-CC sanity check failed. Output:" >&2
   cat "$workdir/wrapper-test.out" >&2
-  emit_zero "wrapper-cc sanity failed"
-  exit 0
+  fail_hard "wrapper-cc sanity failed"
 fi
 echo "run-busybox-musl: wrapper-cc sanity PASS ($(file "$workdir/sanity" | head -1))"
 
@@ -221,7 +227,7 @@ cd "$bb_dir"
 
 if [ ! -f Config.in ]; then
   echo "run-busybox-musl: BusyBox workdir broken (Config.in missing)" >&2
-  emit_zero "bb workdir copy incomplete"
+  skip_zero "bb workdir copy incomplete"
   exit 0
 fi
 
@@ -230,8 +236,7 @@ export CROSS_COMPILE="/usr/bin/${TARGET}-"
 if ! make defconfig ARCH=$BB_ARCH CC="$wrapper" >"$workdir/bb-defconfig.out" 2>&1; then
   echo "run-busybox-musl: BusyBox defconfig failed. Output:" >&2
   tail -30 "$workdir/bb-defconfig.out" >&2
-  emit_zero "bb defconfig failed"
-  exit 0
+  fail_hard "bb defconfig failed"
 fi
 
 sed -i 's|^# CONFIG_STATIC is not set|CONFIG_STATIC=y|; s|^CONFIG_STATIC=.*|CONFIG_STATIC=y|' .config
@@ -252,20 +257,18 @@ done
 
 make oldconfig ARCH=$BB_ARCH CC="$wrapper" >/dev/null 2>&1 || true
 
-if ! make -j"$JOBS" \
+if ! make -j"$JOBS" all \
        ARCH=$BB_ARCH \
        CC="$wrapper" \
        CROSS_COMPILE="$CROSS_COMPILE" \
        2>"$workdir/bb-build.err"; then
   echo "run-busybox-musl: BusyBox build failed. Tail of build.err:" >&2
   tail -40 "$workdir/bb-build.err" >&2
-  emit_zero "bb build failed"
-  exit 0
+  fail_hard "bb build failed"
 fi
 
 if [ ! -f busybox ]; then
-  emit_zero "build succeeded but no busybox binary produced"
-  exit 0
+  fail_hard "build succeeded but no busybox binary produced"
 fi
 
 echo "run-busybox-musl: build OK. Binary size: $(stat -c %s busybox) bytes"
