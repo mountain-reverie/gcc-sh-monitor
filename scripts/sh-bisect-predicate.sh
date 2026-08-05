@@ -26,7 +26,40 @@ export OUT_DIR
 sha="$(git rev-parse HEAD)"
 BISECT_SRC="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
-build() { ( cd "$MONITOR_DIR" && scripts/build-gcc.sh "$sha" sh4-linux-gnu ); }
+# Build the candidate GCC, or restore it from the per-SHA cache when
+# BISECT_CACHE_DIR is set. The cache exists so a second bisect over the same
+# commit range costs no rebuilds — a GCC build is ~40 min, unpacking is seconds.
+build() {
+  local prefix="${GCC_PREFIX:-/tmp/gcc-install}"
+  local cache="${BISECT_CACHE_DIR:-}"
+  local tarball="$cache/$sha.tar.zst"
+
+  if [ -n "$cache" ] && [ -f "$tarball" ]; then
+    echo "bisect: cache hit for $sha" >&2
+    rm -rf "$prefix"; mkdir -p "$prefix"
+    if ! tar --zstd -xf "$tarball" -C "$prefix"; then
+      echo "bisect: cache restore failed for $sha, clearing prefix" >&2
+      rm -rf "$prefix"
+      return 1
+    fi
+    return 0
+  fi
+
+  ( cd "$MONITOR_DIR" && GCC_PREFIX="$prefix" scripts/build-gcc.sh "$sha" sh4-linux-gnu ) \
+    || return 1
+
+  if [ -n "$cache" ]; then
+    mkdir -p "$cache"
+    if tar --zstd -cf "$tarball.tmp" -C "$prefix" . ; then
+      mv "$tarball.tmp" "$tarball"
+      echo "bisect: cached $sha ($(du -sh "$tarball" | cut -f1))" >&2
+    else
+      rm -f "$tarball.tmp"
+      echo "bisect: caching failed for $sha (continuing)" >&2
+    fi
+  fi
+  return 0
+}
 
 case "$TYPE" in
   build)
