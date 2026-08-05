@@ -83,4 +83,10 @@ check "build-failed-hard" 1 no "::error::run-busybox: build failed"
 setup; mk_busybox 0 0 no
 check "no-binary-produced-hard" 1 no "::error::run-busybox: build succeeded but no busybox binary produced"
 
+# Corpus dir is present (so the earlier -d check passes) but the copied
+# workdir lacks Config.in — a mid-run corruption discovered only after
+# `cp -a`, not a static precondition. Must reach fail_hard, not skip_zero.
+setup; mk_busybox 0 0 yes; rm -f "$bbdir/Config.in"
+check "workdir-copy-incomplete-hard" 1 no "::error::run-busybox: workdir copy incomplete"
+
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails failures"; exit 1; }
