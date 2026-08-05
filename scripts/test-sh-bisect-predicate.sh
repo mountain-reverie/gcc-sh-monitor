@@ -179,4 +179,43 @@ setup; mk_build 0; mk_metric 1500000
 check "metric-missing-value-script-skip" 125 metric \
       --key csibe_total_os_bytes_sh4 --threshold 1519843 --direction below --script
 
+# ---- per-SHA build cache ----
+mk_counting_build() {  # stub build increments a counter and populates GCC_PREFIX
+  cat > "$mon/scripts/build-gcc.sh" <<'EOF'
+#!/usr/bin/env bash
+echo x >> "$COUNTER"
+mkdir -p "$GCC_PREFIX/bin"
+echo built > "$GCC_PREFIX/bin/marker"
+exit 0
+EOF
+  chmod +x "$mon/scripts/build-gcc.sh"
+}
+
+# Cache miss then hit: the second run must not invoke build-gcc.sh.
+setup; mk_counting_build
+cache="$root/cache"; prefix="$root/prefix"; counter="$root/counter"; : > "$counter"
+for i in 1 2; do
+  ( cd "$root" && MONITOR_DIR="$mon" OUT_DIR="$out" \
+      BISECT_CACHE_DIR="$cache" GCC_PREFIX="$prefix" COUNTER="$counter" \
+      "$pred" build ) >/dev/null 2>&1
+done
+n=$(wc -l < "$counter")
+if [ "$n" = 1 ]; then echo "PASS cache-second-run-is-a-hit"; else
+  echo "FAIL cache-second-run-is-a-hit: build ran $n times, want 1"; fails=$((fails+1)); fi
+
+# A cache hit must actually restore the install tree.
+if [ -f "$prefix/bin/marker" ]; then echo "PASS cache-hit-restores-prefix"; else
+  echo "FAIL cache-hit-restores-prefix: marker missing"; fails=$((fails+1)); fi
+
+# With BISECT_CACHE_DIR unset, every run rebuilds (unchanged behaviour).
+setup; mk_counting_build
+prefix="$root/prefix"; counter="$root/counter"; : > "$counter"
+for i in 1 2; do
+  ( cd "$root" && MONITOR_DIR="$mon" OUT_DIR="$out" \
+      GCC_PREFIX="$prefix" COUNTER="$counter" "$pred" build ) >/dev/null 2>&1
+done
+n=$(wc -l < "$counter")
+if [ "$n" = 2 ]; then echo "PASS no-cache-always-rebuilds"; else
+  echo "FAIL no-cache-always-rebuilds: build ran $n times, want 2"; fails=$((fails+1)); fi
+
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails failures"; exit 1; }
