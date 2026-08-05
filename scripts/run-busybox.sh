@@ -3,7 +3,8 @@
 # result under the matching qemu-user-static binary, and measure section
 # sizes. Emits /tmp/metrics/busybox-${ARCH}.json with five entries.
 #
-# Build failure → all metrics emit as 0 (script returns 0 so CI proceeds).
+# Build failure → hard error (exit 1), no metrics emitted, CI goes red.
+# Missing toolchain/corpus/qemu → zeros emitted, exit 0 (lane is skipped).
 # Build succeeds, smoke partially passes → size metrics ship, smoke_pass
 #                                          reflects actual count.
 #
@@ -54,7 +55,7 @@ CC_RAW="$GCC_PREFIX/bin/${TARGET}-gcc"
 CC="$CC_RAW -B/usr/bin/${TARGET}-"
 SIZE="${SH4_SIZE:-/usr/bin/${TARGET}-size}"
 
-emit_zero() {
+skip_zero() {
   local reason="$1"
   echo "run-busybox: $reason — emitting zero metrics" >&2
   mkdir -p "$(dirname "$OUT_FILE")"
@@ -69,20 +70,29 @@ emit_zero() {
 EOF
 }
 
+# The toolchain was present and the compile broke. Publishing a 0 here is what
+# hid the 2026-08-04 back_threader ICE for over a day: 0 is numeric, so the
+# publish guard accepted it and the run stayed green. Fail loudly instead.
+fail_hard() {
+  local reason="$1"
+  echo "::error::run-busybox: $reason" >&2
+  exit 1
+}
+
 if [ ! -x "$CC_RAW" ]; then
-  emit_zero "missing $CC_RAW"
+  skip_zero "missing $CC_RAW"
   exit 0
 fi
 if [ ! -d "$BUSYBOX_DIR" ]; then
-  emit_zero "missing $BUSYBOX_DIR"
+  skip_zero "missing $BUSYBOX_DIR"
   exit 0
 fi
 if [ ! -x "$SIZE" ]; then
-  emit_zero "missing $SIZE"
+  skip_zero "missing $SIZE"
   exit 0
 fi
 if ! command -v "$QEMU" >/dev/null; then
-  emit_zero "missing $QEMU"
+  skip_zero "missing $QEMU"
   exit 0
 fi
 
@@ -97,7 +107,7 @@ cd "$workdir"
 if [ ! -f Config.in ]; then
   echo "run-busybox: workdir layout broken (Config.in missing). Listing:" >&2
   ls -la "$workdir" >&2 | head -30
-  emit_zero "workdir copy incomplete"
+  skip_zero "workdir copy incomplete"
   exit 0
 fi
 
@@ -111,8 +121,7 @@ export CROSS_COMPILE="/usr/bin/${TARGET}-"
 if ! make defconfig ARCH=$BB_ARCH CC="$CC" >"$workdir/defconfig.out" 2>&1; then
   echo "run-busybox: defconfig failed. Output:" >&2
   tail -30 "$workdir/defconfig.out" >&2
-  emit_zero "defconfig failed"
-  exit 0
+  fail_hard "defconfig failed"
 fi
 
 # Force static link.
@@ -143,13 +152,11 @@ if ! make -j"$JOBS" \
        2> "$workdir/build.err"; then
   echo "run-busybox: build failed. Tail of build.err:" >&2
   tail -30 "$workdir/build.err" >&2
-  emit_zero "build failed"
-  exit 0
+  fail_hard "build failed"
 fi
 
 if [ ! -f busybox ]; then
-  emit_zero "build succeeded but no busybox binary produced"
-  exit 0
+  fail_hard "build succeeded but no busybox binary produced"
 fi
 
 echo "run-busybox: build OK. Binary size: $(stat -c %s busybox) bytes"
