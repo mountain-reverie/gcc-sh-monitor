@@ -169,4 +169,14 @@ check "metric-script-failed-skip" 125 metric --script scripts/stub-metric.sh $MO
 setup; mk_build 0; mk_metric_empty
 check "metric-key-absent-skip" 125 metric --script scripts/stub-metric.sh $MOPTS
 
+# --threshold as trailing token with no value -> skip(125), not "unbound variable" exit 1
+setup; mk_build 0; mk_metric 1500000
+check "metric-missing-value-threshold-skip" 125 metric --script scripts/stub-metric.sh \
+      --key csibe_total_os_bytes_sh4 --direction below --threshold
+
+# --script as trailing token with no value -> skip(125)
+setup; mk_build 0; mk_metric 1500000
+check "metric-missing-value-script-skip" 125 metric \
+      --key csibe_total_os_bytes_sh4 --threshold 1519843 --direction below --script
+
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails failures"; exit 1; }

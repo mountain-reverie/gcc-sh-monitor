@@ -75,6 +75,11 @@ case "$TYPE" in
     shift   # drop the leading "metric"
     while [ $# -gt 0 ]; do
       case "$1" in
+        --script|--key|--threshold|--direction)
+          [ $# -ge 2 ] || { echo "metric: $1 requires a value" >&2; exit 125; }
+          ;;
+      esac
+      case "$1" in
         --script)    m_script="$2";    shift 2 ;;
         --key)       m_key="$2";       shift 2 ;;
         --threshold) m_threshold="$2"; shift 2 ;;
