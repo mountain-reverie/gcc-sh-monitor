@@ -144,7 +144,7 @@ done
 make oldconfig ARCH=$BB_ARCH CC="$CC" >/dev/null 2>&1 || true
 
 echo "run-busybox: building..."
-if ! make -j"$JOBS" \
+if ! make -j"$JOBS" all \
        ARCH=$BB_ARCH \
        CC="$CC" \
        CROSS_COMPILE="$CROSS_COMPILE" \
