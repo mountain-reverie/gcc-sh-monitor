@@ -37,12 +37,53 @@ CSIBE_THRESHOLD=1519843
 if [ -z "${IN_CONTAINER:-}" ] && [ "${NO_DOCKER:-0}" != 1 ]; then
   echo "=> re-executing inside $IMAGE (--memory=24g)"
   mkdir -p "$OUT_ROOT"
+
+  # In a git worktree, $MONITOR_DIR/.git is a FILE ("gitdir: <parent>/.git/
+  # worktrees/<name>"), pointing outside $MONITOR_DIR entirely. Bind-mounting
+  # only $MONITOR_DIR leaves that path missing inside the container, and git
+  # resolves the repository from cwd before it even knows whether the
+  # subcommand needs one — so EVERY git invocation under /monitor fails
+  # (including build-gcc.sh's early `git config --global --add
+  # safe.directory`), build() fails at every commit, and the whole bisect
+  # converges on "all skipped" without ever attempting a build. Detect this
+  # and bind-mount the real common git dir at its identical absolute path
+  # so paths embedded in the worktree's .git file still resolve inside the
+  # container. Read-write: git writes index/lock files under this dir.
+  extra_mounts=()
+  # `git rev-parse --git-common-dir` returns a path relative to its OWN cwd,
+  # not to $MONITOR_DIR, unless invoked with cwd already at $MONITOR_DIR —
+  # `-C "$MONITOR_DIR"` changes git's working context but the printed path is
+  # still relative to that context, so a bare `cd "$GIT_COMMON_DIR"` from the
+  # driver's own (possibly different) cwd would resolve the wrong directory
+  # or fail outright. Run the whole thing with cwd already inside
+  # $MONITOR_DIR so a relative result resolves correctly regardless of where
+  # the driver itself was invoked from.
+  GIT_COMMON_DIR="$(cd "$MONITOR_DIR" && git rev-parse --git-common-dir 2>/dev/null || true)"
+  if [ -n "$GIT_COMMON_DIR" ]; then
+    case "$GIT_COMMON_DIR" in
+      /*) : ;;                              # already absolute
+      *)  GIT_COMMON_DIR="$MONITOR_DIR/$GIT_COMMON_DIR" ;;
+    esac
+    GIT_COMMON_DIR="$(cd "$GIT_COMMON_DIR" && pwd -P)"
+    case "$GIT_COMMON_DIR" in
+      "$MONITOR_DIR"/*|"$MONITOR_DIR")
+        # Ordinary checkout: common dir already lives under $MONITOR_DIR and
+        # is covered by the existing mount. Nothing extra to do.
+        ;;
+      *)
+        echo "=> worktree detected: also bind-mounting git common dir $GIT_COMMON_DIR"
+        extra_mounts=(-v "$GIT_COMMON_DIR":"$GIT_COMMON_DIR")
+        ;;
+    esac
+  fi
+
   exec docker run --rm -i \
     --memory=24g --memory-swap=24g \
     -e IN_CONTAINER=1 -e JOBS="$JOBS" -e OUT_ROOT=/out \
     -e KEEP_CACHE="${KEEP_CACHE:-0}" \
     -v "$MONITOR_DIR":/monitor \
     -v "$OUT_ROOT":/out \
+    "${extra_mounts[@]}" \
     -w /monitor "$IMAGE" \
     /monitor/scripts/bisect-aug04-regression.sh
 fi
@@ -76,6 +117,47 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+# --- Preflight: prove git actually resolves a repository from /monitor ---
+#
+# A 7-minute silent no-op that looks like a completed run (every commit
+# skipped, both bisects exhaust the range, ~7 min instead of ~3 hours, no
+# GCC build ever attempted) is far worse than an immediate, loud abort. This
+# happened for real when $MONITOR_DIR was a git worktree: the container only
+# had $MONITOR_DIR bind-mounted, but a worktree's $MONITOR_DIR/.git is a FILE
+# pointing at an absolute path outside $MONITOR_DIR (the parent repo's
+# .git/worktrees/<name>), which does not exist inside the container. git
+# resolves the repository from cwd before it even knows whether the
+# subcommand needs one, so every git invocation under /monitor failed —
+# including build-gcc.sh's early `git config --global --add safe.directory`
+# — build() failed at every commit, and the predicate returned skip(125) for
+# the whole range. The mount fix above (bind-mounting the real common git
+# dir) addresses the cause; this check proves the fix actually worked,
+# before spending hours pretending to bisect.
+preflight_git_env() {
+  # The container runs as a different UID than the owner of the bind-mounted
+  # host directories, which trips git's "dubious ownership" protection on
+  # every invocation (discovered live: `fatal: detected dubious ownership in
+  # repository at '/monitor'`, surfaced by this very preflight check working
+  # as intended). This is an ephemeral, single-purpose bisect container, not
+  # a shared or security-sensitive host, and the exact set of paths to trust
+  # varies (a worktree's mounted common dir can be anywhere) — so trust
+  # unconditionally rather than trying to enumerate the exact directories,
+  # matching the same pattern CI tooling (e.g. actions/checkout) uses for
+  # this identical container/bind-mount scenario.
+  git config --global --add safe.directory '*'
+  if ! git -C "$MONITOR_DIR" rev-parse HEAD >/dev/null 2>"$OUT_ROOT/.git-preflight.err"; then
+    echo "::error::preflight: git does not resolve a repository at $MONITOR_DIR" >&2
+    echo "           (inside the container, if this is a worktree checkout)." >&2
+    sed 's/^/           /' "$OUT_ROOT/.git-preflight.err" >&2
+    echo "           This is exactly the failure that makes every bisect commit" >&2
+    echo "           skip and the whole run silently converge on nothing." >&2
+    exit 1
+  fi
+  rm -f "$OUT_ROOT/.git-preflight.err"
+  echo "=> preflight OK: git resolves $MONITOR_DIR (HEAD=$(git -C "$MONITOR_DIR" rev-parse --short HEAD))"
+}
+preflight_git_env
 
 # --- Preflight: refuse to run an unsound bisect ---------------------------
 #
@@ -209,10 +291,25 @@ describe() { [ -n "$1" ] && git -C "$BISECT_SRC" log -1 --format='%h %s' "$1" ||
   echo "BusyBox ICE culprit:  $(describe "$ICE_SHA")"
   echo "CSiBE size culprit:   $(describe "$CSIBE_SHA")"
   echo
-  if [ -n "$ICE_SHA" ] && [ "$ICE_SHA" = "$CSIBE_SHA" ]; then
-    echo "=> SAME commit causes both symptoms."
+  # Only assert a same/different verdict when BOTH culprits were actually
+  # identified. Two empty SHAs previously fell through to the `else` branch
+  # and printed "DIFFERENT commits... independent" — a substantive, WRONG
+  # claim about the regressions when in fact nothing was determined at all.
+  # "We determined nothing" and "we determined they are independent" are
+  # opposite findings; never let the former silently print as the latter.
+  if [ -n "$ICE_SHA" ] && [ -n "$CSIBE_SHA" ]; then
+    if [ "$ICE_SHA" = "$CSIBE_SHA" ]; then
+      echo "=> SAME commit causes both symptoms."
+    else
+      echo "=> DIFFERENT commits. The two symptoms are independent."
+    fi
   else
-    echo "=> DIFFERENT commits. The two symptoms are independent."
+    echo "=> COULD NOT COMPARE: at least one bisect failed to identify a culprit."
+    [ -z "$ICE_SHA" ]   && echo "   - BusyBox ICE bisect did not converge on a culprit (see bisect1-ice.log)."
+    [ -z "$CSIBE_SHA" ] && echo "   - CSiBE size bisect did not converge on a culprit (see bisect2-csibe.log)."
+    echo "   This usually means every commit in range was skipped — check the"
+    echo "   preflight output above and the log for build/skip reasons before"
+    echo "   re-running."
   fi
   echo
   echo "CSiBE: good=$CSIBE_GOOD bad=$CSIBE_BAD threshold=$CSIBE_THRESHOLD ($CSIBE_KEY)"
@@ -223,3 +320,13 @@ describe() { [ -n "$1" ] && git -C "$BISECT_SRC" log -1 --format='%h %s' "$1" ||
   echo "CI only sampled the range endpoints, so an intermittent or"
   echo "config-dependent fault would still converge on something."
 } | tee "$OUT_ROOT/summary.txt"
+
+# A run that identified NEITHER culprit determined nothing and must not exit
+# 0 — an operator (or any future automation reading this exit code) needs to
+# notice. This composes correctly with cleanup(): it only prunes the build
+# cache on a clean (exit 0) run, so exiting nonzero here also retains the
+# cache for a retry, which is exactly what's wanted when nothing was learned.
+if [ -z "$ICE_SHA" ] && [ -z "$CSIBE_SHA" ]; then
+  echo "::error::bisect-aug04-regression: neither culprit was identified; see summary.txt" >&2
+  exit 1
+fi
