@@ -9,6 +9,7 @@
 #   sh-bisect-predicate.sh build
 #   sh-bisect-predicate.sh script  '<reproduce command>'
 #   sh-bisect-predicate.sh dejagnu '<regressed-tests-file>'   # one "path detail" per line
+#   sh-bisect-predicate.sh sh-sim  '<regressed-tests-file>'   # one "isa:path detail" per line
 #   sh-bisect-predicate.sh metric --script <path> --key <name> \
 #                                 --threshold <number> --direction below|above
 #
@@ -17,13 +18,17 @@
 #   OUT_DIR      output dir (default: /tmp/dejagnu-out); dejagnu gcc.sum and sh-sim {execute,ieee}-<isa>.sum are read from here
 set -uo pipefail
 
-TYPE="${1:?usage: sh-bisect-predicate.sh <build|script|dejagnu> [arg]}"
+TYPE="${1:?usage: sh-bisect-predicate.sh <build|script|dejagnu|sh-sim|metric> [arg]}"
 ARG="${2:-}"
 MONITOR_DIR="${MONITOR_DIR:?MONITOR_DIR must point at the gcc-sh-monitor checkout}"
 OUT_DIR="${OUT_DIR:-/tmp/dejagnu-out}"
 export OUT_DIR
 
-sha="$(git rev-parse HEAD)"
+sha="$(git rev-parse HEAD 2>/dev/null)" || sha=""
+if [ -z "$sha" ]; then
+  echo "bisect: git rev-parse HEAD failed or returned empty -- cannot identify commit under test (infra fault, not a verdict)" >&2
+  exit 125
+fi
 BISECT_SRC="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 # Build the candidate GCC, or restore it from the per-SHA cache when
@@ -155,6 +160,18 @@ case "$TYPE" in
               "$metric_out" 2>/dev/null)
     [ -n "$value" ] && [ "$value" != "null" ] \
       || { echo "metric: key $m_key absent from $metric_out" >&2; exit 125; }
+
+    # A zero-valued metric is never a legitimate measurement here -- it is
+    # the signature of a skip_zero path (missing toolchain/corpus/qemu) or
+    # a compile failure that slipped through, not a fact about the commit.
+    # Treating it as real would make "0 < threshold" true for every commit
+    # and converge the bisect on the first one tested, with nothing
+    # surfaced. Distinguish this from the absent-key case above (both exit
+    # 125, but for different, clearly stated reasons).
+    if awk -v v="$value" 'BEGIN { exit !(v == 0) }'; then
+      echo "metric: key $m_key = 0 in $metric_out -- treating as untestable (zero metric, not an absent key)" >&2
+      exit 125
+    fi
 
     echo "metric: $m_key = $value (threshold $m_threshold, bad if $m_direction)" >&2
     if awk -v v="$value" -v t="$m_threshold" -v d="$m_direction" \
