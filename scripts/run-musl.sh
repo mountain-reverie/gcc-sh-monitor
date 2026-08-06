@@ -4,8 +4,10 @@
 # matching qemu-user-static binary, and measure libc.so section sizes.
 # Emits /tmp/metrics/musl-${ARCH}.json with four entries.
 #
-# Build failure → all metrics emit as 0 (script returns 0 so CI proceeds).
-# Build OK + smoke fails → size ships, smoke_pass=0.
+# Build failure → hard error (exit 1), no metrics emitted, CI goes red.
+# Missing toolchain/corpus/qemu → zeros emitted, exit 0 (lane is skipped).
+# Build succeeds, smoke partially passes → size metrics ship, smoke_pass
+#                                          reflects actual count.
 #
 # Environment:
 #   TARGET         GNU triple: sh4-linux-gnu (default) | arm-linux-gnueabihf
