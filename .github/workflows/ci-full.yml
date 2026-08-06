@@ -696,3 +696,76 @@ jobs:
           name: metrics-multi
           path: metrics-multi
           retention-days: 7
+
+  script-tests:
+    # Regression tests for the scripts/ helper suite itself (bash test-*.sh
+    # and unittest-based test-*.py). Independent of the other lanes: plain
+    # runner, no container, no GCC build, nothing else depends on it.
+    #
+    # Failure must propagate: each suite is run in its own step so a failed
+    # suite stops the job (default shell is `bash -e`) instead of being
+    # swallowed by a loop that ignores exit codes -- that exact swallow-the-
+    # failure pattern is the bug this workflow addition exists to catch.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: scripts/test-run-busybox.sh
+        run: bash scripts/test-run-busybox.sh
+
+      - name: scripts/test-run-busybox-musl.sh
+        run: bash scripts/test-run-busybox-musl.sh
+
+      - name: scripts/test-run-musl.sh
+        run: bash scripts/test-run-musl.sh
+
+      - name: scripts/test-sh-bisect-predicate.sh
+        run: bash scripts/test-sh-bisect-predicate.sh
+
+      - name: scripts/test-sync-check.sh
+        run: bash scripts/test-sync-check.sh
+
+      - name: scripts/test-diff-csibe-objects.py
+        run: python3 scripts/test-diff-csibe-objects.py
+
+      - name: scripts/test-extract-failures.py
+        run: python3 scripts/test-extract-failures.py
+
+      - name: scripts/test-extract-sh-sim-failures.py
+        run: python3 scripts/test-extract-sh-sim-failures.py
+
+      - name: scripts/test-merge-metrics.py
+        run: python3 scripts/test-merge-metrics.py
+
+      - name: scripts/test-migrate-benchmark-data.py
+        run: python3 scripts/test-migrate-benchmark-data.py
+
+      - name: scripts/test-parse-dejagnu.py
+        run: python3 scripts/test-parse-dejagnu.py
+
+      - name: scripts/test-sh-density-metrics.py
+        run: python3 scripts/test-sh-density-metrics.py
+
+      - name: scripts/test-sh-dejagnu-delta.py
+        run: python3 scripts/test-sh-dejagnu-delta.py
+
+      - name: scripts/test-sh-file-issue.py
+        run: python3 scripts/test-sh-file-issue.py
+
+      - name: scripts/test-sh-lastgreen.py
+        run: python3 scripts/test-sh-lastgreen.py
+
+      - name: scripts/test-sh-regression-detect.py
+        run: python3 scripts/test-sh-regression-detect.py
+
+      - name: scripts/test-sh-step-command.py
+        run: python3 scripts/test-sh-step-command.py
+
+      - name: scripts/test-suffix-metrics.py
+        run: python3 scripts/test-suffix-metrics.py
