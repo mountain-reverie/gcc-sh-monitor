@@ -226,9 +226,15 @@ cp -a "$BUSYBOX_DIR"/. "$bb_dir"/
 cd "$bb_dir"
 
 if [ ! -f Config.in ]; then
-  echo "run-busybox-musl: BusyBox workdir broken (Config.in missing)" >&2
-  skip_zero "bb workdir copy incomplete"
-  exit 0
+  echo "run-busybox-musl: BusyBox workdir broken (Config.in missing). Listing:" >&2
+  ls -la "$bb_dir" >&2 | head -30
+  # This is NOT an "environment absent" fact like the checks above (cross
+  # gcc / musl source / corpus dir / qemu) — it is a mid-run copy corruption
+  # (disk exhaustion, mktemp race, partial cp) discovered only after the
+  # fact. A soft zero-metric skip here is exactly the failure mode Task 1
+  # eliminated for compile failures: reporting "good" for a run that never
+  # actually tested the candidate compiler. Fail hard instead.
+  fail_hard "bb workdir copy incomplete"
 fi
 
 export CROSS_COMPILE="/usr/bin/${TARGET}-"
