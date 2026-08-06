@@ -35,12 +35,17 @@ BISECT_SRC="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 build() {
   local prefix="${GCC_PREFIX:-/tmp/gcc-install}"
   local cache="${BISECT_CACHE_DIR:-}"
-  local tarball="$cache/$sha.tar.zst"
+  # gzip, not zstd: the CI image (ghcr.io/mountain-reverie/gcc-sh-base) does
+  # not ship a zstd binary, so every `tar --zstd` pack silently failed
+  # (non-fatally) during the real Aug 4 run, leaving the cache empty for the
+  # whole run and forcing bisect 2 to rebuild everything from scratch. gzip
+  # is present in the image (verified) and universally available.
+  local tarball="$cache/$sha.tar.gz"
 
   if [ -n "$cache" ] && [ -f "$tarball" ]; then
     echo "bisect: cache hit for $sha" >&2
     rm -rf "$prefix"; mkdir -p "$prefix"
-    if ! tar --zstd -xf "$tarball" -C "$prefix"; then
+    if ! tar -xzf "$tarball" -C "$prefix"; then
       echo "bisect: cache restore failed for $sha, clearing prefix" >&2
       rm -rf "$prefix"
       return 2
@@ -54,7 +59,7 @@ build() {
 
   if [ -n "$cache" ]; then
     mkdir -p "$cache"
-    if tar --zstd -cf "$tarball.tmp" -C "$prefix" . ; then
+    if tar -czf "$tarball.tmp" -C "$prefix" . ; then
       mv "$tarball.tmp" "$tarball"
       echo "bisect: cached $sha ($(du -sh "$tarball" | cut -f1))" >&2
     else

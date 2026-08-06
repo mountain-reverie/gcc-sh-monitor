@@ -214,7 +214,7 @@ setup; mk_counting_build
 cache="$root/cache"; prefix="$root/prefix"; counter="$root/counter"; : > "$counter"
 mkdir -p "$cache"
 sha=$(cd "$root" && git rev-parse HEAD)
-head -c 16 /dev/zero > "$cache/$sha.tar.zst"   # truncated/corrupt, not a valid archive
+head -c 16 /dev/zero > "$cache/$sha.tar.gz"   # truncated/corrupt, not a valid archive
 ( cd "$root" && MONITOR_DIR="$mon" OUT_DIR="$out" \
     BISECT_CACHE_DIR="$cache" GCC_PREFIX="$prefix" COUNTER="$counter" \
     "$pred" build ) >/dev/null 2>&1

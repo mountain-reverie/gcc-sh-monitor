@@ -225,6 +225,36 @@ preflight_busybox_env() {
 }
 preflight_busybox_env
 
+# --- Preflight: build cache compressor -------------------------------------
+#
+# sh-bisect-predicate.sh's build() packs the per-SHA GCC install with gzip so
+# bisect 2 can restore from cache instead of rebuilding. A missing compressor
+# degrades speed (bisect 2 rebuilds everything, as happened for real with the
+# previous zstd-based cache on this image), never correctness — build()'s
+# pack step is already handled as non-fatal — so this warns loudly rather
+# than aborting the run, unlike the git/busybox preflights above whose
+# failure would corrupt the bisect verdicts themselves.
+preflight_cache_compressor() {
+  if ! command -v gzip >/dev/null 2>&1; then
+    echo "::warning::preflight: gzip not found; the per-SHA build cache will not" >&2
+    echo "           work (every pack will fail non-fatally) and bisect 2 will" >&2
+    echo "           rebuild GCC from scratch for every commit instead of" >&2
+    echo "           restoring from cache. Correctness is unaffected; expect" >&2
+    echo "           this run to take much longer." >&2
+    return
+  fi
+  local probe="$OUT_ROOT/.gzip-preflight-probe"
+  if ! ( echo probe | gzip -c > "$probe.gz" && gzip -dc "$probe.gz" > "$probe.out" \
+         && [ "$(cat "$probe.out")" = probe ] ); then
+    echo "::warning::preflight: gzip is present but a round-trip compress/decompress" >&2
+    echo "           probe failed; the build cache will likely not work." >&2
+  else
+    echo "=> preflight OK: gzip round-trips (build cache will work)"
+  fi
+  rm -f "$probe.gz" "$probe.out"
+}
+preflight_cache_compressor
+
 if [ ! -d "$BISECT_SRC/.git" ]; then
   echo "=> cloning gcc-mirror (blobless)"
   git clone --filter=blob:none https://github.com/gcc-mirror/gcc.git "$BISECT_SRC"
