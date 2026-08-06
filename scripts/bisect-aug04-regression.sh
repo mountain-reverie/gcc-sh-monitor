@@ -325,8 +325,15 @@ if [ -n "$ICE_SHA" ]; then
   echo
   echo "=> capturing full ICE report at $ICE_SHA"
   ( cd "$BISECT_SRC" && git checkout -q "$ICE_SHA" )
-  sha="$ICE_SHA"
-  if MONITOR_DIR="$MONITOR_DIR" "$MONITOR_DIR/scripts/sh-bisect-predicate.sh" build; then
+  # sh-bisect-predicate.sh derives the GCC SHA under test from `git rev-parse
+  # HEAD` in ITS OWN cwd (not from any variable we set here). Invoking it
+  # with cwd still at $MONITOR_DIR — as `git bisect run` never does, since
+  # that always runs with cwd at $BISECT_SRC — makes it resolve OUR repo's
+  # HEAD instead of the culprit GCC commit just checked out above, and
+  # build-gcc.sh then fails trying to fetch our SHA from gcc-mirror. Run it
+  # with cwd in $BISECT_SRC, exactly like `run_bisect` does, so `sha`
+  # resolves to $ICE_SHA.
+  if ( cd "$BISECT_SRC" && MONITOR_DIR="$MONITOR_DIR" "$MONITOR_DIR/scripts/sh-bisect-predicate.sh" build ); then
     ( cd "$MONITOR_DIR" && TARGET=sh4-linux-gnu BB_EXTRA_CFLAGS=-freport-bug \
         scripts/run-busybox.sh ) > "$OUT_ROOT/ice-report.txt" 2>&1 || true
     echo "   wrote $OUT_ROOT/ice-report.txt"
