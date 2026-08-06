@@ -169,6 +169,10 @@ check "metric-script-failed-skip" 125 metric --script scripts/stub-metric.sh $MO
 setup; mk_build 0; mk_metric_empty
 check "metric-key-absent-skip" 125 metric --script scripts/stub-metric.sh $MOPTS
 
+# zero-valued metric -> skip(125), not a legitimate "always below threshold" bad
+setup; mk_build 0; mk_metric 0
+check "metric-zero-value-skip" 125 metric --script scripts/stub-metric.sh $MOPTS
+
 # --threshold as trailing token with no value -> skip(125), not "unbound variable" exit 1
 setup; mk_build 0; mk_metric 1500000
 check "metric-missing-value-threshold-skip" 125 metric --script scripts/stub-metric.sh \
@@ -242,5 +246,14 @@ done
 n=$(wc -l < "$counter")
 if [ "$n" = 2 ]; then echo "PASS no-cache-always-rebuilds"; else
   echo "FAIL no-cache-always-rebuilds: build ran $n times, want 2"; fails=$((fails+1)); fi
+
+# Unresolvable HEAD (no commits yet) -> skip(125), never a false bad(1).
+setup
+noheadroot=$(mktemp -d)
+( cd "$noheadroot" && git init -q )
+( cd "$noheadroot" && MONITOR_DIR="$mon" OUT_DIR="$out" "$pred" build ) >/dev/null 2>&1
+got=$?
+if [ "$got" = 125 ]; then echo "PASS build-unresolvable-head-skip"; else
+  echo "FAIL build-unresolvable-head-skip: want exit 125 got $got"; fails=$((fails+1)); fi
 
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails failures"; exit 1; }
