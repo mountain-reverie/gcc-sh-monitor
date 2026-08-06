@@ -48,7 +48,12 @@ if [ -z "${IN_CONTAINER:-}" ] && [ "${NO_DOCKER:-0}" != 1 ]; then
   # converges on "all skipped" without ever attempting a build. Detect this
   # and bind-mount the real common git dir at its identical absolute path
   # so paths embedded in the worktree's .git file still resolve inside the
-  # container. Read-write: git writes index/lock files under this dir.
+  # container. Mounted read-only: nothing run against $MONITOR_DIR's git dir
+  # in this script or the predicate ever writes to it (only `rev-parse
+  # HEAD`/`rev-parse --git-common-dir` are run against $MONITOR_DIR; all
+  # actual GCC-side git writes happen in the container-internal bisect clone
+  # at $BISECT_SRC). This is the user's real, shared .git — do not risk
+  # writes landing in it from inside the container.
   extra_mounts=()
   # `git rev-parse --git-common-dir` returns a path relative to its OWN cwd,
   # not to $MONITOR_DIR, unless invoked with cwd already at $MONITOR_DIR —
@@ -71,8 +76,8 @@ if [ -z "${IN_CONTAINER:-}" ] && [ "${NO_DOCKER:-0}" != 1 ]; then
         # is covered by the existing mount. Nothing extra to do.
         ;;
       *)
-        echo "=> worktree detected: also bind-mounting git common dir $GIT_COMMON_DIR"
-        extra_mounts=(-v "$GIT_COMMON_DIR":"$GIT_COMMON_DIR")
+        echo "=> worktree detected: also bind-mounting git common dir $GIT_COMMON_DIR (read-only)"
+        extra_mounts=(-v "$GIT_COMMON_DIR":"$GIT_COMMON_DIR:ro")
         ;;
     esac
   fi
@@ -81,6 +86,7 @@ if [ -z "${IN_CONTAINER:-}" ] && [ "${NO_DOCKER:-0}" != 1 ]; then
     --memory=24g --memory-swap=24g \
     -e IN_CONTAINER=1 -e JOBS="$JOBS" -e OUT_ROOT=/out \
     -e KEEP_CACHE="${KEEP_CACHE:-0}" \
+    -e GIT_COMMON_DIR="$GIT_COMMON_DIR" \
     -v "$MONITOR_DIR":/monitor \
     -v "$OUT_ROOT":/out \
     "${extra_mounts[@]}" \
@@ -139,13 +145,28 @@ preflight_git_env() {
   # host directories, which trips git's "dubious ownership" protection on
   # every invocation (discovered live: `fatal: detected dubious ownership in
   # repository at '/monitor'`, surfaced by this very preflight check working
-  # as intended). This is an ephemeral, single-purpose bisect container, not
-  # a shared or security-sensitive host, and the exact set of paths to trust
-  # varies (a worktree's mounted common dir can be anywhere) — so trust
-  # unconditionally rather than trying to enumerate the exact directories,
-  # matching the same pattern CI tooling (e.g. actions/checkout) uses for
-  # this identical container/bind-mount scenario.
-  git config --global --add safe.directory '*'
+  # as intended). This must NEVER execute on the host: `git config --global`
+  # permanently mutates the invoking user's ~/.gitconfig, and NO_DOCKER=1 (see
+  # header) runs this exact function directly on the host with no container
+  # in between. Guard on IN_CONTAINER, which the re-exec block above sets
+  # only for the actual docker invocation — never on the host path.
+  if [ -z "${IN_CONTAINER:-}" ]; then
+    echo "::error::preflight: refusing to touch global git config on the host (NO_DOCKER=1)." >&2
+    echo "           This run needs 'safe.directory' entries for:" >&2
+    echo "             $MONITOR_DIR" >&2
+    [ -n "${GIT_COMMON_DIR:-}" ] && echo "             $GIT_COMMON_DIR" >&2
+    echo "           Add them yourself (git config --global --add safe.directory <path>)" >&2
+    echo "           if git already refuses to operate on these paths, then re-run." >&2
+    exit 1
+  fi
+  # Scope to the concrete paths actually bind-mounted into this disposable
+  # container, matching scripts/build-gcc.sh:95-96 — not a wildcard. Only
+  # $MONITOR_DIR (always) and $GIT_COMMON_DIR (worktree checkouts only, see
+  # the mount block above) are ever touched by git under /monitor.
+  git config --global --add safe.directory "$MONITOR_DIR"
+  if [ -n "${GIT_COMMON_DIR:-}" ]; then
+    git config --global --add safe.directory "$GIT_COMMON_DIR"
+  fi
   if ! git -C "$MONITOR_DIR" rev-parse HEAD >/dev/null 2>"$OUT_ROOT/.git-preflight.err"; then
     echo "::error::preflight: git does not resolve a repository at $MONITOR_DIR" >&2
     echo "           (inside the container, if this is a worktree checkout)." >&2
