@@ -142,6 +142,9 @@ if ! grep -qF "::error::run-busybox-musl: wrapper-cc sanity failed" "$root/stder
 fi
 [ "$ok" = 1 ] && echo "PASS wrapper-cc-sanity-failed-hard" || fails=$((fails+1))
 
+setup; mk_musl_busybox 0 0 0 0 0 yes; rm -f "$bbdir/Config.in"
+check "workdir-copy-incomplete-hard" 1 no "::error::run-busybox-musl: bb workdir copy incomplete"
+
 setup; mk_musl_busybox 0 0 0 1 0 yes
 check "bb-defconfig-failed-hard" 1 no "::error::run-busybox-musl: bb defconfig failed"
 
