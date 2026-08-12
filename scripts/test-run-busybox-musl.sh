@@ -40,9 +40,16 @@ mk_musl_busybox() {
   local bb_defconfig_ret="$4" bb_make_ret="$5" bb_binary="$6"
   local wrapper_ret="${7:-0}"
 
-  # Create musl configure script
+  # Create musl configure script. Record --prefix the way real musl does: the
+  # runner passes the install dir via --prefix and never sets DESTDIR, so the
+  # install stub must resolve it from here. (Keying the stub off DESTDIR made
+  # it mkdir absolute /lib and /include, which only "worked" on boxes where
+  # those happened to exist — it fails on a clean CI runner.)
   cat > "$musldir/configure" <<EOF
 #!/bin/bash
+for arg in "\$@"; do
+  case \$arg in --prefix=*) printf '%s\n' "\${arg#--prefix=}" > config.prefix ;; esac
+done
 exit $musl_cfg_ret
 EOF
   chmod +x "$musldir/configure"
@@ -52,7 +59,9 @@ EOF
 all:
 	@exit $musl_make_ret
 install:
-	@mkdir -p \$(DESTDIR)/lib \$(DESTDIR)/include
+	@prefix=\$\$(cat config.prefix 2>/dev/null); \\
+	 [ -n "\$\$prefix" ] || { echo "stub: configure recorded no --prefix" >&2; exit 1; }; \\
+	 mkdir -p "\$\$prefix/lib" "\$\$prefix/include"
 	@exit $musl_install_ret
 EOF
 
