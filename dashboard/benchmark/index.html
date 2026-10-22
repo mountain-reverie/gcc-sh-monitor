@@ -4,8 +4,12 @@
   <meta charset="utf-8">
   <title>gcc-sh-monitor — correctness &amp; size trends</title>
   <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litepicker@2.0.12/dist/css/litepicker.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/litepicker@2.0.12/dist/litepicker.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/litepicker@2.0.12/dist/plugins/ranges.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/litepicker@2.0.12/dist/plugins/keyboardnav.js"></script>
   <script src="data.js"></script>
   <style>
     /* This page is chart-dense — use the full browser width and lay the
@@ -20,7 +24,44 @@
     #charts section { margin: 0; min-width: 0; }   /* min-width:0 lets charts shrink in grid cells */
     #charts section h2 { margin: 0 0 0.3rem; font-size: 1rem; word-break: break-word; }
     .chart-box { position: relative; height: 16rem; }
-    @media (max-width: 28rem) { body { padding-inline: 1rem; } }
+
+    /* Date-range controls. The text field is driven by Litepicker: clicking
+       it opens a two-month calendar with a preset rail. */
+    #range-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: 0 0 1rem; }
+    #range-input {
+      flex: 0 1 18rem; min-width: 13rem; padding: .3rem 1.9rem .3rem .55rem;
+      font: inherit; color: inherit;
+      border: 1px solid #bbb; border-radius: 4px;
+      cursor: pointer;
+      background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23666' stroke-width='1.6' stroke-linecap='round'%3E%3Crect x='2' y='3.5' width='12' height='10.5' rx='1.5'/%3E%3Cpath d='M2 7h12M5 1.5v3M11 1.5v3'/%3E%3C/svg%3E") no-repeat right .55rem center;
+      background-size: 15px 15px;
+    }
+    #range-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .quick-ranges { display: flex; flex-wrap: wrap; gap: .25rem; }
+    .quick-ranges button {
+      font: inherit; font-size: .9rem; padding: .3rem .6rem;
+      color: var(--fg); background: #fff;
+      border: 1px solid #bbb; border-radius: 4px; cursor: pointer;
+    }
+    .quick-ranges button:hover { background: #eef4fa; }
+    .quick-ranges button[aria-pressed="true"] { color: #fff; background: var(--accent); border-color: var(--accent); }
+    #range-summary { font-size: .9rem; }
+    @media (max-width: 40rem) {
+      body { padding-inline: 1rem; }
+      #range-input, #range-summary { flex: 1 1 100%; }
+    }
+
+    /* Litepicker themes itself through custom properties declared on :root;
+       nudge its default blue towards the site accent. */
+    :root {
+      --litepicker-is-start-color-bg: #0066cc;
+      --litepicker-is-end-color-bg: #0066cc;
+      --litepicker-is-in-range-color: #dbeafe;
+      --litepicker-day-color-hover: #0066cc;
+      --litepicker-button-prev-month-color-hover: #0066cc;
+      --litepicker-button-next-month-color-hover: #0066cc;
+    }
+    .litepicker { font-size: .85rem; --litepicker-day-width: 34px; }
   </style>
 </head>
 <body>
@@ -28,15 +69,17 @@
     <h1><a href="../">gcc-sh-monitor</a> · correctness &amp; size trends</h1>
     <p>Dejagnu correctness plus code-size benchmarks (CSiBE, CoreMark,
     BusyBox, musl) across sh4/arm/x86. One chart per metric, one point per
-    upstream commit tested.</p>
+    upstream commit tested. Pick any start and end date; the default is the
+    last week.</p>
   </header>
 
-  <div id="window-controls" style="margin: 0 0 1rem; display: flex; gap: .5rem; flex-wrap: wrap;">
-    <span class="muted" style="align-self:center">Window:</span>
-    <button type="button" data-window="week">1 week</button>
-    <button type="button" data-window="month">1 month</button>
-    <button type="button" data-window="year">1 year</button>
-    <button type="button" data-window="all">All</button>
+  <div id="range-controls">
+    <label for="range-input" class="muted">Range:</label>
+    <input id="range-input" type="text" readonly size="23"
+           title="Open the calendar to pick a custom date range"
+           aria-label="Benchmark date range, start and end date">
+    <div id="quick-ranges" class="quick-ranges" role="group" aria-label="Quick date ranges"></div>
+    <span id="range-summary" class="muted" aria-live="polite"></span>
   </div>
 
   <main id="charts"></main>
@@ -51,6 +94,9 @@
   <script>
     const data = window.BENCHMARK_DATA || { entries: {} };
     const main = document.getElementById("charts");
+    const rangeInput = document.getElementById("range-input");
+    const quickBox = document.getElementById("quick-ranges");
+    const rangeSummary = document.getElementById("range-summary");
 
     const ARCH_RE = /_(sh4|arm|x86|riscv32)$/;
     const ARCH_COLORS = { sh4: "#3b82f6", arm: "#10b981", x86: "#f59e0b", riscv32: "#a855f7" };
@@ -114,8 +160,10 @@
 
     // Collect (timestamp, value) series per metric name across all entries.
     const byMetric = {};
+    const runTimes = [];
     for (const suite of Object.values(data.entries || {})) {
       for (const run of suite) {
+        runTimes.push(run.date);
         for (const b of run.benches) {
           if (b.name.endsWith("__lra")) continue;   // sh-lra lane retired; ignore dormant data
           if (!byMetric[b.name]) byMetric[b.name] = [];
@@ -129,25 +177,121 @@
         }
       }
     }
+    runTimes.sort((a, b) => a - b);
 
-    if (Object.keys(byMetric).length === 0) {
-      main.innerHTML = "<p>No data yet — waiting for the first ci-full run.</p>";
+    // ---------------------------------------------------------------------
+    // Date range selection
+    //
+    // A range is {from: "YYYY-MM-DD", to: "YYYY-MM-DD"} (both inclusive) or
+    // {all: true}. Days are local calendar days, matching what the picker
+    // shows; data timestamps are binned into the local day they fall on.
+    // ---------------------------------------------------------------------
+    const DAY = 864e5;
+    const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+    const pad2 = (n) => String(n).padStart(2, "0");
+    const dayString = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const dayDate = (s) => {
+      const [y, m, d] = s.split("-").map(Number);
+      return new Date(y, m - 1, d);
+    };
+    const dayStart = (s) => dayDate(s).getTime();   // local midnight, epoch ms
+    const dateFromMs = (ms) => {
+      const d = new Date(ms);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    };
+    const addDays = (d, n) => {
+      const x = new Date(d);
+      x.setDate(x.getDate() + n);
+      return x;
+    };
+
+    const today = dateFromMs(Date.now());
+    const dataFirst = runTimes.length ? dateFromMs(runTimes[0]) : addDays(today, -30);
+    const dataLast = runTimes.length ? dateFromMs(runTimes[runTimes.length - 1]) : today;
+    const clampStart = (d) => (d < dataFirst ? dataFirst : d);
+
+    function lastNDays(n) {
+      const from = clampStart(addDays(today, 1 - n));
+      return { from: dayString(from), to: dayString(today) };
     }
 
-    // Group metrics into charts, splitting arch suffixes (or, for FDPIC, the
-    // LTO variant) into the series that make up each chart.
-    const WINDOWS = { week: 7*864e5, month: 30*864e5, year: 365*864e5, all: Infinity };
+    const QUICK_RANGES = [
+      { label: "1 week", days: 7 },
+      { label: "1 month", days: 30 },
+      { label: "3 months", days: 90 },
+      { label: "1 year", days: 365 },
+      { label: "All", days: null },
+    ];
+
+    function matchesQuick(range, days) {
+      if (days === null) return !!range.all;
+      if (range.all) return false;
+      const want = lastNDays(days);
+      return range.from === want.from && range.to === want.to;
+    }
+
+    function parseRange(from, to) {
+      if (!DAY_RE.test(from || "") || !DAY_RE.test(to || "")) return null;
+      return dayStart(from) <= dayStart(to) ? { from, to } : { from: to, to: from };
+    }
+
+    function rangeFromUrl() {
+      const p = new URLSearchParams(location.search);
+      if (p.get("range") === "all") return { all: true };
+      return parseRange(p.get("from"), p.get("to"));
+    }
+
+    function rangeFromStorage() {
+      let v = null;
+      try { v = localStorage.getItem("benchmarkRange"); } catch (e) { /* storage unavailable */ }
+      if (v === "all") return { all: true };
+      if (!v) return null;
+      const [from, to] = v.split("..");
+      return parseRange(from, to);
+    }
+
+    function persistRange(range) {
+      const value = range.all ? "all" : `${range.from}..${range.to}`;
+      try { localStorage.setItem("benchmarkRange", value); } catch (e) { /* ignore */ }
+      const url = new URL(location.href);
+      if (range.all) {
+        url.searchParams.set("range", "all");
+        url.searchParams.delete("from");
+        url.searchParams.delete("to");
+      } else {
+        url.searchParams.delete("range");
+        url.searchParams.set("from", range.from);
+        url.searchParams.set("to", range.to);
+      }
+      history.replaceState(null, "", url);
+    }
+
     let charts = [];
 
-    function render(windowMs) {
+    function render(range) {
       charts.forEach((c) => c.destroy());
       charts = [];
       main.innerHTML = "";
-      const cutoff = windowMs === Infinity ? -Infinity : Date.now() - windowMs;
+
+      if (Object.keys(byMetric).length === 0) {
+        const p = document.createElement("p");
+        p.textContent = "No data yet — waiting for the first ci-full run.";
+        main.appendChild(p);
+        return;
+      }
+
+      const min = range.all ? -Infinity : dayStart(range.from);
+      const max = range.all ? Infinity : dayStart(range.to) + DAY - 1;
+
+      const runs = runTimes.filter((t) => t >= min && t <= max).length;
+      rangeSummary.textContent = runs
+        ? `${runs} run${runs === 1 ? "" : "s"} in range`
+        : "";
 
       const byBase = {};
       for (const [name, pts] of Object.entries(byMetric)) {
-        const points = pts.filter((p) => p.x >= cutoff).sort((a, b) => a.x - b.x);
+        const points = pts.filter((p) => p.x >= min && p.x <= max).sort((a, b) => a.x - b.x);
         if (!points.length) continue;
         const { chartBase, seriesKey, label, color, order, dashed } = resolve(name);
         if (!byBase[chartBase]) byBase[chartBase] = {};
@@ -155,7 +299,11 @@
       }
 
       if (Object.keys(byBase).length === 0) {
-        main.innerHTML = "<p>No data in this range.</p>";
+        const p = document.createElement("p");
+        p.textContent = range.all
+          ? "No data in this range."
+          : `No data between ${range.from} and ${range.to}.`;
+        main.appendChild(p);
         return;
       }
 
@@ -192,16 +340,19 @@
             responsive: true,
             maintainAspectRatio: false,
             scales: {
-              x: { type: "time", time: { unit: "day" } },
+              x: {
+                type: "time",
+                min: range.all ? undefined : min,
+                max: range.all ? undefined : max,
+              },
               y: { beginAtZero: false, title: { display: true, text: unit } },
             },
             plugins: {
               tooltip: {
                 callbacks: {
-                  title: (items) => {
-                    const d = new Date(items[0].raw.x);
-                    return d.toISOString().slice(0, 19) + "Z";
-                  },
+                  title: (items) => new Date(items[0].raw.x).toLocaleString(undefined, {
+                    dateStyle: "medium", timeStyle: "short",
+                  }),
                   label: (item) => {
                     const prefix = item.dataset.label ? `${item.dataset.label}: ` : "";
                     return `${prefix}${item.raw.y} ${item.raw.unit} (${item.raw.commit})`;
@@ -215,18 +366,106 @@
       }
     }
 
-    function applyWindow(key) {
-      const k = WINDOWS[key] ? key : "week";
-      localStorage.setItem("benchmarkWindow", k);
-      for (const b of document.querySelectorAll("#window-controls button")) {
-        b.style.fontWeight = b.dataset.window === k ? "bold" : "normal";
+    // Keep the picker's displayed dates in sync with the active range without
+    // re-entering applyRange() through its "selected" event.
+    let syncingPicker = false;
+    let picker = null;
+
+    function applyRange(range, opts) {
+      const persist = !opts || opts.persist !== false;
+      if (!range.all) {
+        const normalized = parseRange(range.from, range.to);
+        if (normalized) range = normalized;
       }
-      render(WINDOWS[k]);
+      if (persist) persistRange(range);
+
+      for (const b of quickBox.querySelectorAll("button")) {
+        const days = b.dataset.days === "all" ? null : Number(b.dataset.days);
+        b.setAttribute("aria-pressed", String(matchesQuick(range, days)));
+      }
+
+      if (picker) {
+        const span = range.all
+          ? { from: dayString(dataFirst), to: dayString(dataLast) }
+          : range;
+        syncingPicker = true;
+        picker.setDateRange(dayDate(span.from), dayDate(span.to));
+        syncingPicker = false;
+      }
+
+      render(range);
     }
-    for (const b of document.querySelectorAll("#window-controls button")) {
-      b.addEventListener("click", () => applyWindow(b.dataset.window));
+
+    for (const q of QUICK_RANGES) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = q.label;
+      b.dataset.days = q.days === null ? "all" : String(q.days);
+      b.setAttribute("aria-pressed", "false");
+      b.addEventListener("click", () => {
+        applyRange(q.days === null ? { all: true } : lastNDays(q.days));
+      });
+      quickBox.appendChild(b);
     }
-    applyWindow(localStorage.getItem("benchmarkWindow") || "week");
+
+    // Two months side by side needs ~600px; fall back to one on narrow screens.
+    const monthCount = window.innerWidth < 700 ? 1 : 2;
+    const presetRange = (start, end) => {
+      const s = clampStart(start);
+      return [s, end < s ? s : end];
+    };
+
+    picker = new Litepicker({
+      element: rangeInput,
+      singleMode: false,
+      numberOfMonths: monthCount,
+      numberOfColumns: monthCount,
+      format: "YYYY-MM-DD",
+      delimiter: " – ",
+      autoApply: true,
+      minDate: dataFirst,
+      maxDate: today,
+      plugins: ["ranges", "keyboardnav"],
+      ranges: {
+        position: "left",
+        customRanges: {
+          "Today": presetRange(today, today),
+          "Yesterday": presetRange(addDays(today, -1), addDays(today, -1)),
+          "Last 7 days": presetRange(addDays(today, -6), today),
+          "Last 30 days": presetRange(addDays(today, -29), today),
+          "Last 90 days": presetRange(addDays(today, -89), today),
+          "This month": presetRange(new Date(today.getFullYear(), today.getMonth(), 1), today),
+          "Last month": presetRange(
+            new Date(today.getFullYear(), today.getMonth() - 1, 1),
+            new Date(today.getFullYear(), today.getMonth(), 0)
+          ),
+          "All time": presetRange(dataFirst, today),
+        },
+      },
+      setup(p) {
+        p.on("selected", (start, end) => {
+          if (syncingPicker) return;
+          applyRange({ from: start.format("YYYY-MM-DD"), to: end.format("YYYY-MM-DD") });
+        });
+      },
+    });
+
+    // URL wins so shared links reproduce a view; then the last used range;
+    // otherwise the default last week.
+    applyRange(rangeFromUrl() || rangeFromStorage() || lastNDays(7), { persist: false });
+
+    // A read-only field still takes focus: let Enter/Space/ArrowDown open the
+    // calendar and Escape close it, so the control works without a mouse.
+    rangeInput.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        picker.hide();
+        return;
+      }
+      if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown") {
+        e.preventDefault();
+        picker.show();
+      }
+    });
   </script>
 </body>
 </html>
